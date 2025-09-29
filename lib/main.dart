@@ -1,6 +1,7 @@
 // Import the login screen, which will be the first screen to use our theme.
 import 'package:assetarchiverflutter/screens/auth/login_screen.dart';
-import 'package:assetarchiverflutter/screens/employee_management/employee_dashboard_screen.dart';
+// UPDATED: Import the new NavScreen which now acts as our home.
+import 'package:assetarchiverflutter/screens/nav_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 // ADDED: Import the Employee model to recognize its type for routing.
@@ -87,11 +88,10 @@ class MyApp extends StatelessWidget {
           // Extract the Employee object passed during navigation.
           final employee = settings.arguments as Employee;
 
-          // Return a MaterialPageRoute to the EmployeeDashboardScreen,
-          // passing the required employee data to its constructor.
+          // FIXED: This now correctly returns your NavScreen widget.
           return MaterialPageRoute(
             builder: (context) {
-              return EmployeeDashboardScreen(employee: employee);
+              return NavScreen(employee: employee);
             },
           );
         }
@@ -101,3 +101,4 @@ class MyApp extends StatelessWidget {
     );
   }
 }
+
