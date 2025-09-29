@@ -5,38 +5,55 @@ String employeeToJson(Employee data) => json.encode(data.toJson());
 
 class Employee {
   final String id;
-  final String? name; // This will now be populated with the salesmanLoginId
+  // UPDATED: Added fields to hold the user's full name from the profile endpoint.
+  final String? firstName;
+  final String? lastName;
   final String? email;
-  final String? loginId; // This will also be the salesmanLoginId
+  final String? loginId;
+  final String? companyName;
+
+  /// A computed property to get the best possible display name.
+  /// It prioritizes a full name, then falls back to first name, last name, or login ID.
+  String get displayName {
+    if (firstName != null && lastName != null && firstName!.isNotEmpty && lastName!.isNotEmpty) {
+      return '$firstName $lastName';
+    }
+    return firstName ?? lastName ?? loginId ?? 'Employee';
+  }
 
   Employee({
     required this.id,
-    this.name,
+    this.firstName,
+    this.lastName,
     this.email,
     this.loginId,
+    this.companyName,
   });
 
-  /// A factory constructor to create an Employee instance from a JSON map.
-  /// This now matches the structure of your server's login response.
+  /// This factory constructor is now robust enough to handle data from
+  /// both the /login (minimal) and /users/:id (full profile) server responses.
   factory Employee.fromJson(Map<String, dynamic> json) {
-    // The server sends 'salesmanLoginId', so we use that.
-    final serverLoginId = json["salesmanLoginId"] as String?;
-
     return Employee(
       id: json["id"]?.toString() ?? '',
-      // Use the server's login ID as the display name, since firstName is not available.
-      name: serverLoginId,
+      // UPDATED: Now parses the first and last name fields from the profile endpoint.
+      firstName: json["firstName"] as String?,
+      lastName: json["lastName"] as String?,
       email: json["email"] as String?,
-      // Map the server's ID to our model's loginId field.
-      loginId: serverLoginId,
+      // The login response has 'salesmanLoginId', the profile endpoint might too.
+      loginId: json["salesmanLoginId"] as String?,
+      // The login response provides this.
+      companyName: json["companyName"] as String?,
     );
   }
 
+  /// Converts the Employee instance into a JSON map for local storage.
   Map<String, dynamic> toJson() => {
         "id": id,
-        "name": name,
+        "firstName": firstName,
+        "lastName": lastName,
         "email": email,
         "loginId": loginId,
+        "companyName": companyName,
       };
 }
 

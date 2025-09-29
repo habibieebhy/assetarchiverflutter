@@ -85,14 +85,24 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      // TAILORED: Use the employee's name from the passed-in model.
-                      // Provides a fallback to loginId or a generic term if name is null.
-                      widget.employee.name ?? widget.employee.loginId ?? 'Employee',
+                      // UPDATED: Now uses the smart 'displayName' getter from the Employee model.
+                      // This will show the full name if available, otherwise it falls back gracefully.
+                      widget.employee.displayName,
                       style: textTheme.headlineMedium?.copyWith(
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
                       ),
+                      textAlign: TextAlign.center,
                     ),
+                    // Display the company name if it is available in the model.
+                    if (widget.employee.companyName != null && widget.employee.companyName!.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4.0),
+                        child: Text(
+                          widget.employee.companyName!,
+                          style: textTheme.bodyMedium?.copyWith(color: Colors.white70),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -184,3 +194,4 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
     );
   }
 }
+
