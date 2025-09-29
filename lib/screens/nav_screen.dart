@@ -1,12 +1,10 @@
+import 'dart:ui'; // Required for the blur effect
 import 'package:assetarchiverflutter/models/employee_model.dart';
 import 'package:assetarchiverflutter/screens/employee_management/employee_dashboard_screen.dart';
 import 'package:flutter/material.dart';
 
-/// This widget is the main "shell" of your app after a user logs in.
-/// It holds the BottomNavigationBar and manages which page is currently visible.
 class NavScreen extends StatefulWidget {
   final Employee employee;
-
   const NavScreen({super.key, required this.employee});
 
   @override
@@ -14,25 +12,22 @@ class NavScreen extends StatefulWidget {
 }
 
 class _NavScreenState extends State<NavScreen> {
-  // This integer tracks the currently selected tab. 0 = Home.
   int _selectedIndex = 0;
-
-  // This is the list of pages that the navigation bar will switch between.
   late final List<Widget> _pages;
 
   @override
   void initState() {
     super.initState();
-    // We create the list of pages here.
-    // The EmployeeDashboardScreen is the first page (index 0).
     _pages = [
       EmployeeDashboardScreen(employee: widget.employee),
-      const _PlaceholderScreen(title: 'Missions'), // A temporary placeholder page
-      const _PlaceholderScreen(title: 'Profile'),  // A temporary placeholder page
+      // UPDATED: Changed "Missions" to "PJP"
+      const _PlaceholderScreen(title: 'PJP'),
+      // ADDED: New "Journey" screen
+      const _PlaceholderScreen(title: 'Journey'),
+      const _PlaceholderScreen(title: 'Profile'),
     ];
   }
 
-  // This function is called when a navigation bar item is tapped.
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
@@ -42,40 +37,68 @@ class _NavScreenState extends State<NavScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // The body of the screen is set to the currently selected page.
-      // When this screen first loads, it will show the EmployeeDashboardScreen.
+      // This allows the body of the pages to extend behind the navigation bar,
+      // which is necessary for the blur effect to work.
+      extendBody: true,
       body: _pages[_selectedIndex],
-      
-      // Here is the BottomNavigationBar widget.
-      bottomNavigationBar: BottomNavigationBar(
-        items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_filled),
-            label: 'Home',
+      // UPDATED: The BottomNavigationBar is now wrapped in a custom glass widget.
+      bottomNavigationBar: _buildGlassmorphicNavBar(),
+    );
+  }
+
+  // --- NEW: Custom Glassmorphic Navigation Bar Widget ---
+  Widget _buildGlassmorphicNavBar() {
+    return ClipRRect(
+      // The corners are rounded only at the top.
+      borderRadius: const BorderRadius.only(
+        topLeft: Radius.circular(24.0),
+        topRight: Radius.circular(24.0),
+      ),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
+        child: Container(
+          // A subtle border to give the glass a defined top edge.
+          decoration: BoxDecoration(
+            border: Border(top: BorderSide(color: Colors.white.withAlpha(51))),
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.assignment),
-            label: 'Missions',
+          child: BottomNavigationBar(
+            // The actual bar is now transparent to let the blur show through.
+            backgroundColor: Colors.white.withAlpha(26),
+            elevation: 0, // Remove the shadow.
+            items: const <BottomNavigationBarItem>[
+              BottomNavigationBarItem(
+                icon: Icon(Icons.home_filled),
+                label: 'Home',
+              ),
+              // UPDATED: Renamed to PJP, using a more relevant icon.
+              BottomNavigationBarItem(
+                icon: Icon(Icons.checklist_rtl),
+                label: 'PJP',
+              ),
+              // ADDED: New Journey tab with a map icon.
+              BottomNavigationBarItem(
+                icon: Icon(Icons.map_outlined),
+                label: 'Journey',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.person),
+                label: 'Profile',
+              ),
+            ],
+            currentIndex: _selectedIndex,
+            onTap: _onItemTapped,
+            selectedItemColor: Colors.white, // Brighter color for selected item
+            unselectedItemColor: Colors.white70, // Softer color for unselected items
+            type: BottomNavigationBarType.fixed,
+            showUnselectedLabels: true, // Ensure all labels are visible
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Profile',
-          ),
-        ],
-        currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
-        // Style the selected item to match your app's theme.
-        selectedItemColor: Theme.of(context).colorScheme.primary,
-        unselectedItemColor: Colors.grey,
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        type: BottomNavigationBarType.fixed,
+        ),
       ),
     );
   }
 }
 
-/// A simple placeholder widget used for the Missions and Profile tabs.
-/// You can replace these with your real screen widgets later.
+/// A simple placeholder widget used for the new tabs.
 class _PlaceholderScreen extends StatelessWidget {
   final String title;
   const _PlaceholderScreen({required this.title});
@@ -96,3 +119,4 @@ class _PlaceholderScreen extends StatelessWidget {
     );
   }
 }
+
