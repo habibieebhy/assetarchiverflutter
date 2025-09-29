@@ -3,8 +3,8 @@ import 'package:assetarchiverflutter/models/employee_model.dart';
 import 'package:assetarchiverflutter/api/auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'dart:developer' as dev;
 
-// STEP 1: Convert to a StatefulWidget to manage state.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -13,28 +13,42 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  // STEP 2: Create TextEditingControllers to get input from the text fields.
   final _loginIdController = TextEditingController();
   final _passwordController = TextEditingController();
 
-  // STEP 3: Add state variables for loading and error messages.
   bool _isLoading = false;
   String? _errorMessage;
 
+  // --- NEW: On-screen logger ---
+  final List<String> _debugLogs = [];
+
+  // Helper to log messages to the screen and the debug console simultaneously
+  void _log(String message) {
+    // Also log to the actual debug console just in case
+    dev.log(message, name: 'LoginScreen');
+    // Add to our on-screen list and refresh the UI
+    setState(() {
+      _debugLogs.insert(0, '[${TimeOfDay.now().format(context)}] $message');
+    });
+  }
+  // --- END NEW ---
+
   @override
   void dispose() {
-    // Dispose controllers to prevent memory leaks.
     _loginIdController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
-  // STEP 4: Create the function to handle the login logic.
   Future<void> _handleLogin() async {
-    // Hide the keyboard
+    _log('Login button pressed.');
     FocusScope.of(context).unfocus();
 
-    if (_loginIdController.text.isEmpty || _passwordController.text.isEmpty) {
+    final loginId = _loginIdController.text.trim();
+    final password = _passwordController.text;
+
+    if (loginId.isEmpty || password.isEmpty) {
+      _log('Validation failed: Fields are empty.');
       setState(() {
         _errorMessage = 'Please enter both Login ID and Password.';
       });
@@ -47,29 +61,26 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      // Call the AuthService to perform the login.
-      // FIXED: Added the explicit type `Employee` to make the import necessary.
-      final Employee employee = await AuthService().login(
-        _loginIdController.text,
-        _passwordController.text,
-      );
-
-      // On success, navigate to the home screen and pass the employee data.
-      // pushNamedAndRemoveUntil clears the navigation stack so the user can't go back.
-      if (mounted) {
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          '/home',
-          (route) => false, // This predicate removes all previous routes.
-          arguments: employee, // Pass the logged-in employee object.
-        );
+      _log('Calling AuthService.login...');
+      final Employee employee = await AuthService().login(loginId, password);
+      
+      if (!mounted) {
+        _log('Login successful, but widget is no longer mounted.');
+        return;
       }
+
+      _log('Login success! Navigating to /home.');
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        '/home',
+        (route) => false,
+        arguments: employee,
+      );
     } catch (e) {
-      // On failure, update the state to show the error message.
-      setState(() {
-        _errorMessage = e.toString().replaceFirst('Exception: ', '');
-      });
+      _log('Login failed with error: ${e.toString()}');
+      if (!mounted) return;
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      setState(() => _errorMessage = msg);
     } finally {
-      // Ensure the loading indicator is turned off, even if an error occurs.
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -95,84 +106,69 @@ class _LoginScreenState extends State<LoginScreen> {
         child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24.0),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(24.0),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
-                child: Container(
-                  padding: const EdgeInsets.all(24.0),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withAlpha(26),
-                    borderRadius: BorderRadius.circular(24.0),
-                    border: Border.all(color: Colors.white.withAlpha(51)),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        'Sign In',
-                        textAlign: TextAlign.center,
-                        style: textTheme.headlineMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
+            child: Column(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(24.0),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
+                    child: Container(
+                      padding: const EdgeInsets.all(24.0),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withAlpha(26),
+                        borderRadius: BorderRadius.circular(24.0),
+                        border: Border.all(color: Colors.white.withAlpha(51)),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'to continue to your account',
-                        textAlign: TextAlign.center,
-                        style: textTheme.bodyLarge?.copyWith(
-                          color: Colors.white.withAlpha(179),
-                        ),
-                      ),
-                      const SizedBox(height: 32),
-                      // Assign the controller to the TextField.
-                      TextField(
-                        controller: _loginIdController,
-                        decoration: const InputDecoration(
-                          labelText: 'Login ID',
-                          prefixIcon: Icon(Icons.person_outline),
-                        ),
-                        keyboardType: TextInputType.text,
-                        textInputAction: TextInputAction.next,
-                      ),
-                      const SizedBox(height: 16),
-                      // Assign the controller to the TextField.
-                      TextField(
-                        controller: _passwordController,
-                        decoration: const InputDecoration(
-                          labelText: 'Password',
-                          prefixIcon: Icon(Icons.lock_outline),
-                        ),
-                        obscureText: true,
-                        onSubmitted: (_) => _handleLogin(),
-                      ),
-                      const SizedBox(height: 24),
-                      // Show an error message if it exists.
-                      if (_errorMessage != null)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 16.0),
-                          child: Text(
-                            _errorMessage!,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(color: Colors.amberAccent),
-                          ),
-                        ),
-                      // Show a progress indicator or the button.
-                      _isLoading
-                          ? const Center(child: CircularProgressIndicator())
-                          : ElevatedButton(
-                              // Call your login handler.
-                              onPressed: _handleLogin,
-                              child: const Text('Continue'),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text('Sign In', textAlign: TextAlign.center, style: textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.white)),
+                          const SizedBox(height: 8),
+                          Text('to continue to your account', textAlign: TextAlign.center, style: textTheme.bodyLarge?.copyWith(color: Colors.white.withAlpha(179))),
+                          const SizedBox(height: 32),
+                          TextField(controller: _loginIdController, decoration: const InputDecoration(labelText: 'Login ID', prefixIcon: Icon(Icons.person_outline)), keyboardType: TextInputType.text, textInputAction: TextInputAction.next),
+                          const SizedBox(height: 16),
+                          TextField(controller: _passwordController, decoration: const InputDecoration(labelText: 'Password', prefixIcon: Icon(Icons.lock_outline)), obscureText: true, onSubmitted: (_) => _handleLogin()),
+                          const SizedBox(height: 24),
+                          if (_errorMessage != null)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 16.0),
+                              child: Text(_errorMessage!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.amberAccent)),
                             ),
-                    ],
+                          _isLoading
+                              ? const Center(child: CircularProgressIndicator())
+                              : ElevatedButton(onPressed: _handleLogin, child: const Text('Continue')),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-              ),
+                ).animate().fadeIn(duration: 500.ms).scale(begin: const Offset(0.9, 0.9)),
+
+                // --- NEW: On-screen log viewer ---
+                if (_debugLogs.isNotEmpty)
+                  Container(
+                    margin: const EdgeInsets.only(top: 24),
+                    padding: const EdgeInsets.all(12),
+                    height: 150,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: ListView.builder(
+                      reverse: true,
+                      itemCount: _debugLogs.length,
+                      itemBuilder: (context, index) {
+                        return Text(
+                          _debugLogs[index],
+                          style: const TextStyle(color: Colors.white, fontSize: 12),
+                        );
+                      },
+                    ),
+                  ),
+              ],
             ),
-          ).animate().fadeIn(duration: 500.ms).scale(begin: const Offset(0.9, 0.9)),
+          ),
         ),
       ),
     );
