@@ -1,36 +1,103 @@
-// Import the material library, which contains the widgets for Material Design.
+// Import the login screen, which will be the first screen to use our theme.
+import 'package:assetarchiverflutter/screens/auth/login_screen.dart';
+import 'package:assetarchiverflutter/screens/employee_management/employee_dashboard_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+// ADDED: Import the Employee model to recognize its type for routing.
+import 'package:assetarchiverflutter/models/employee_model.dart';
 
-// The main function is the entry point for all Flutter apps.
+// The app's entry point.
 void main() {
   runApp(const MyApp());
 }
 
-// MyApp is the root widget of your application.
+// The root widget, now responsible for configuration, not UI.
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // MaterialApp is the main container for a Material Design app.
+    // A modern, clean blue for a Facebook/Android feel
+    final modernBlue = Colors.blue.shade700;
+
     return MaterialApp(
-      // Scaffold provides the basic structure of a visual interface.
-      home: Scaffold(
-        // AppBar is the toolbar at the top of the screen.
-        appBar: AppBar(
-          title: const Text('Hello Flutter!'),
-          backgroundColor: Colors.blueAccent,
+      debugShowCheckedModeBanner: false,
+      title: 'Modern App',
+
+      // --- THE GLASS-READY "MATERIAL SPECIFICATION SHEET" ---
+      theme: ThemeData(
+        // 1. THE "GLASS": A dark theme lets the background colors shine through.
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: modernBlue,
+          brightness: Brightness.dark,
         ),
-        // The body of the app. We use Center to position its child in the middle.
-        body: const Center(
-          child: Text(
-            'Hello, World! WOW!!',
-            style: TextStyle(fontSize: 28),
+
+        // 2. THE "PRINTING": Roboto is the standard Android font, clean and readable.
+        textTheme: GoogleFonts.robotoTextTheme(ThemeData.dark().textTheme),
+
+        // 3. THE "VIRTUAL COMPONENTS": Semi-transparent styles for text fields.
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          // UPDATED: Replaced deprecated withOpacity with withAlpha for better precision.
+          fillColor: Colors.white.withAlpha(26), // Semi-transparent white
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16.0),
+            borderSide: BorderSide(
+              color: Colors.white.withAlpha(51), // Subtle edge highlight
+            ),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16.0),
+            borderSide: BorderSide(
+              color: Colors.white.withAlpha(51),
+            ),
+          ),
+          prefixIconColor: Colors.white.withAlpha(179),
+        ),
+
+        // 4. THE "SOLID BUTTONS": Opaque and vibrant to stand out.
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: modernBlue,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 18),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16.0),
+            ),
+            textStyle: GoogleFonts.roboto(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
+
+        useMaterial3: true,
       ),
-      // This removes the little "Debug" banner in the corner.
-      debugShowCheckedModeBanner: false,
+
+      // --- NAVIGATION ---
+      initialRoute: '/login',
+      // UPDATED: The routes map is now used only for routes that don't need arguments.
+      routes: {
+        '/login': (context) => const LoginScreen(),
+      },
+      // UPDATED: onGenerateRoute handles dynamic routing for screens that require arguments.
+      onGenerateRoute: (settings) {
+        // Handle the '/home' route.
+        if (settings.name == '/home') {
+          // Extract the Employee object passed during navigation.
+          final employee = settings.arguments as Employee;
+
+          // Return a MaterialPageRoute to the EmployeeDashboardScreen,
+          // passing the required employee data to its constructor.
+          return MaterialPageRoute(
+            builder: (context) {
+              return EmployeeDashboardScreen(employee: employee);
+            },
+          );
+        }
+        // If the route name is not handled, return null.
+        return null;
+      },
     );
   }
 }
