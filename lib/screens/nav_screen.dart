@@ -1,6 +1,8 @@
 import 'dart:ui';
 import 'package:assetarchiverflutter/models/employee_model.dart';
 import 'package:assetarchiverflutter/screens/employee_management/employee_dashboard_screen.dart';
+import 'package:assetarchiverflutter/screens/employee_management/employee_profile_screen.dart';
+import 'package:assetarchiverflutter/screens/employee_management/employee_salesorder_screen.dart';
 import 'package:assetarchiverflutter/widgets/reusableglasscard.dart';
 import 'package:flutter/material.dart';
 
@@ -20,15 +22,14 @@ class _NavScreenState extends State<NavScreen> {
   @override
   void initState() {
     super.initState();
-    // FIXED: The list of pages now has 5 items to match the BottomNavigationBar.
     _pages = [
       EmployeeDashboardScreen(employee: widget.employee),
       const _PlaceholderScreen(title: 'PJP'),
-      const _PlaceholderScreen(title: 'Sales Order'), // ADDED
+      // UPDATED: Replaced the placeholder with your actual SalesOrderScreen
+      SalesOrderScreen(employee: widget.employee),
       const _PlaceholderScreen(title: 'Journey'),
-      const _PlaceholderScreen(title: 'Profile'),
+      EmployeeProfileScreen(employee: widget.employee),
     ];
-    // FIXED: The titles list now also has 5 items.
     _pageTitles = ['Home', 'PJP', 'Sales Order', 'Journey', 'Profile'];
   }
 
@@ -70,8 +71,6 @@ class _NavScreenState extends State<NavScreen> {
         child: ListView(
           padding: EdgeInsets.zero,
           children: [
-            // FIXED: Wrapped the DrawerHeader in a SizedBox to give it more height
-            // and resolve the overflow error.
             SizedBox(
               height: 200,
               child: DrawerHeader(
@@ -100,8 +99,6 @@ class _NavScreenState extends State<NavScreen> {
                 ),
               ),
             ),
-            // FIXED: These items are now treated as independent actions and
-            // use a different helper method.
             _buildDrawerActionItem(icon: Icons.description_outlined, text: 'CREATE DVR'),
             _buildDrawerActionItem(icon: Icons.description, text: 'CREATE TVR'),
             _buildDrawerActionItem(icon: Icons.assessment_outlined, text: 'COMPETETION FORM'),
@@ -115,14 +112,12 @@ class _NavScreenState extends State<NavScreen> {
     );
   }
 
-  // FIXED: This helper is now for actions that DO NOT change the page.
   Widget _buildDrawerActionItem({required IconData icon, required String text}) {
     return ListTile(
       leading: Icon(icon, color: Colors.white70),
       title: Text(text, style: const TextStyle(color: Colors.white)),
       onTap: () {
-        Navigator.pop(context); // Close the drawer
-        // Show a message for now. You can add navigation logic here later.
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('$text tapped')),
         );
@@ -138,7 +133,6 @@ class _NavScreenState extends State<NavScreen> {
         items: const <BottomNavigationBarItem>[
           BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: 'Home'),
           BottomNavigationBarItem(icon: Icon(Icons.checklist_rtl), label: 'PJP'),
-          // Your new "Sales Order" tab
           BottomNavigationBarItem(icon: Icon(Icons.shopping_cart_outlined), label: 'Sales Order'),
           BottomNavigationBarItem(icon: Icon(Icons.map_outlined), label: 'Journey'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
@@ -154,6 +148,7 @@ class _NavScreenState extends State<NavScreen> {
   }
 }
 
+// This placeholder is still used for some tabs
 class _PlaceholderScreen extends StatelessWidget {
   final String title;
   const _PlaceholderScreen({required this.title});
