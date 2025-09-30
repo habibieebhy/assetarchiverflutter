@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:assetarchiverflutter/models/employee_model.dart';
 import 'package:assetarchiverflutter/screens/employee_management/employee_dashboard_screen.dart';
 import 'package:assetarchiverflutter/screens/employee_management/employee_profile_screen.dart';
+import 'package:assetarchiverflutter/screens/employee_management/employee_pjp_screen.dart';
 import 'package:assetarchiverflutter/screens/employee_management/employee_salesorder_screen.dart';
 import 'package:assetarchiverflutter/widgets/reusableglasscard.dart';
 import 'package:flutter/material.dart';
@@ -24,8 +25,8 @@ class _NavScreenState extends State<NavScreen> {
     super.initState();
     _pages = [
       EmployeeDashboardScreen(employee: widget.employee),
-      const _PlaceholderScreen(title: 'PJP'),
-      // UPDATED: Replaced the placeholder with your actual SalesOrderScreen
+      // UPDATED: Replaced the placeholder with the actual EmployeePJPScreen.
+      EmployeePJPScreen(employee: widget.employee),
       SalesOrderScreen(employee: widget.employee),
       const _PlaceholderScreen(title: 'Journey'),
       EmployeeProfileScreen(employee: widget.employee),
@@ -81,22 +82,29 @@ class _NavScreenState extends State<NavScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const CircleAvatar(radius: 30, child: Icon(Icons.person, size: 30)),
-                    const SizedBox(height: 10),
+                    Text(
+                      widget.employee.companyName ?? 'Your Company',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
                     Text(
                       widget.employee.displayName,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white),
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white),
                     ),
                     Text(
                       widget.employee.email ?? '',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white70),
                     ),
-                    Text(
-                      widget.employee.companyName ?? '',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white),
-                    )
                   ],
                 ),
+              ),
+            ),
+            const Divider(color: Colors.white24),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text(
+                'CREATE REPORTS/ORDERS',
+                style: TextStyle(color: Colors.white70, fontSize: 12),
               ),
             ),
             _buildDrawerActionItem(icon: Icons.description_outlined, text: 'CREATE DVR'),
@@ -148,7 +156,7 @@ class _NavScreenState extends State<NavScreen> {
   }
 }
 
-// This placeholder is still used for some tabs
+// This is still used for the Journey tab.
 class _PlaceholderScreen extends StatelessWidget {
   final String title;
   const _PlaceholderScreen({required this.title});
