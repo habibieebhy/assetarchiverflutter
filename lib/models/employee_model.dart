@@ -46,6 +46,25 @@ class Employee {
     );
   }
 
+  // --- ADDED: The copyWith method to allow merging data from the two API calls ---
+  Employee copyWith({
+    String? id,
+    String? firstName,
+    String? lastName,
+    String? email,
+    String? loginId,
+    String? companyName,
+  }) {
+    return Employee(
+      id: id ?? this.id,
+      firstName: firstName ?? this.firstName,
+      lastName: lastName ?? this.lastName,
+      email: email ?? this.email,
+      loginId: loginId ?? this.loginId,
+      companyName: companyName ?? this.companyName,
+    );
+  }
+
   /// Converts the Employee instance into a JSON map for local storage.
   Map<String, dynamic> toJson() => {
         "id": id,

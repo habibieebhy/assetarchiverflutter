@@ -66,7 +66,7 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
         // Maintain the same background gradient for a consistent app feel.
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFF0D47A1), Color(0xFF42A5F5)],
+            colors: [Color(0xFF0D47A1), Color.fromARGB(255, 2, 10, 103)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -153,7 +153,7 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(
-                                "Today's Missions",
+                                "Active & Up-comin' Pjp's",
                                 style: textTheme.titleLarge?.copyWith(
                                   fontWeight: FontWeight.bold,
                                   color: Colors.white,

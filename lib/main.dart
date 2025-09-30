@@ -19,7 +19,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // A modern, clean blue for a Facebook/Android feel
-    final modernBlue = const Color.fromARGB(255, 0, 76, 151);
+    final modernBlue = const Color.fromARGB(255, 35, 103, 251);
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
