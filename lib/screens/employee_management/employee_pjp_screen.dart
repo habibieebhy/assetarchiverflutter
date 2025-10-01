@@ -24,11 +24,14 @@ class EmployeePJPScreen extends StatefulWidget {
 }
 
 class _EmployeePJPScreenState extends State<EmployeePJPScreen> {
-  // Mock data to populate the list, based on your design
+  // UPDATED: Added more mock data to ensure the list overflows the screen for better testing.
   final List<_PjpItem> _pjpList = [
     _PjpItem(name: 'Sharma Traders', address: 'Plot 22, Industrial Area\nPhase 2, Jaipur', phone: '+919876543210'),
     _PjpItem(name: 'Verma Distributors', address: '100 Ring Road\nKanpur', phone: '+919876543211'),
     _PjpItem(name: 'Gupta & Co.', address: '8/4 Gandhi Nagar\nLucknow', phone: '+919876543212'),
+    _PjpItem(name: 'Singh Enterprises', address: '12B, Civil Lines\nAllahabad', phone: '+919876543213'),
+    _PjpItem(name: 'Modern Cement Store', address: 'Shop 45, Market Complex\nVaranasi', phone: '+919876543214'),
+    _PjpItem(name: 'Builders Choice', address: 'NH-2, Bypass Road\nAgra', phone: '+919876543215'),
   ];
 
   @override
@@ -36,13 +39,14 @@ class _EmployeePJPScreenState extends State<EmployeePJPScreen> {
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [Color(0xFF0D47A1), Color(0xFF42A5F5)],
+          colors: [Color(0xFF0D47A1), Color.fromARGB(255, 2, 10, 103)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
       ),
       child: ListView.builder(
-        // FIXED: Added top padding to account for the AppBar, so the first card is visible.
+        // FIXED: This ensures the list is always scrollable, even with few items.
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: EdgeInsets.only(
           top: kToolbarHeight + MediaQuery.of(context).padding.top + 16,
           left: 16,
