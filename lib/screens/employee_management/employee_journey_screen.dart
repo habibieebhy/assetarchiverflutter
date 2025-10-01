@@ -3,7 +3,7 @@ import 'package:assetarchiverflutter/models/employee_model.dart';
 import 'package:assetarchiverflutter/widgets/reusableglasscard.dart';
 import 'package:flutter/material.dart';
 import 'package:slide_to_act/slide_to_act.dart';
-// IMPORTED: The correct, free map and location packages
+// IMPORTED: The new map and location packages
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
@@ -17,15 +17,16 @@ class EmployeeJourneyScreen extends StatefulWidget {
 }
 
 class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
-  // Controller for flutter_map
   final MapController _mapController = MapController();
   StreamSubscription<Position>? _positionStreamSubscription;
 
-  // --- Dynamic State Variables ---
+  // --- DYNAMIC STATE VARIABLES ---
   LatLng? _currentLocation;
   final List<LatLng> _routePoints = [];
   final List<Marker> _markers = [];
   double _totalDistance = 0.0;
+  // State variable to track the map's current zoom level.
+  double _currentZoom = 12.5;
 
   // Mock destination location
   static final LatLng _pjpLocation = LatLng(26.1824, 91.7538); // Guwahati
@@ -43,7 +44,6 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
   }
 
   Future<void> _startJourney() async {
-    // 1. Check for location permissions
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
       permission = await Geolocator.requestPermission();
@@ -53,7 +53,6 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
       }
     }
 
-    // 2. Get initial position
     try {
       Position initialPosition = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
       final initialLatLng = LatLng(initialPosition.latitude, initialPosition.longitude);
@@ -61,20 +60,18 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
       setState(() {
         _currentLocation = initialLatLng;
         _routePoints.add(initialLatLng);
-        // Markers for flutter_map
-        _markers.add(_buildMarker(initialLatLng, Icons.person_pin_circle, Colors.blue, key: const Key('currentLocation')));
+        _markers.add(_buildMarker(initialLatLng, Icons.person_pin_circle, Colors.blue));
         _markers.add(_buildMarker(_pjpLocation, Icons.location_on, Colors.red));
       });
 
-      _mapController.move(initialLatLng, 15.0);
+      _mapController.move(initialLatLng, 15);
     } catch (e) {
       debugPrint("Error getting initial location: $e");
     }
 
-    // 3. Set up location stream
     const LocationSettings locationSettings = LocationSettings(
       accuracy: LocationAccuracy.high,
-      distanceFilter: 10, // Only update when moved 10 meters
+      distanceFilter: 10,
     );
 
     _positionStreamSubscription = Geolocator.getPositionStream(locationSettings: locationSettings).listen((Position position) {
@@ -88,22 +85,19 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
         _currentLocation = newLocation;
         _routePoints.add(newLocation);
 
-        // Update the current location marker
         _markers.removeWhere((m) => m.key == const Key('currentLocation'));
         _markers.add(_buildMarker(newLocation, Icons.person_pin_circle, Colors.blue, key: const Key('currentLocation')));
       });
-      // Animate the map to the new location
-      _mapController.move(newLocation, _mapController.zoom);
+      _mapController.move(newLocation, _currentZoom);
     });
   }
 
-  // Helper to create Marker widgets for flutter_map
   Marker _buildMarker(LatLng point, IconData icon, Color color, {Key? key}) {
     return Marker(
       key: key,
       point: point,
-      width: 40,
-      height: 40,
+      width: 80,
+      height: 80,
       child: Icon(icon, color: color, size: 40),
     );
   }
@@ -112,35 +106,33 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        // Replaced GoogleMap with FlutterMap
         FlutterMap(
           mapController: _mapController,
           options: MapOptions(
             initialCenter: _pjpLocation,
-            initialZoom: 12.5,
+            initialZoom: _currentZoom,
+            // FIXED: Removed the unnecessary null check.
+            onPositionChanged: (position, hasGesture) {
+              _currentZoom = position.zoom;
+            },
           ),
           children: [
-            // Dark theme map tiles from CartoDB (no API key needed)
             TileLayer(
               urlTemplate: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
               subdomains: const ['a', 'b', 'c', 'd'],
             ),
-            // Layer to draw the user's route
             PolylineLayer(
               polylines: [
                 Polyline(
                   points: _routePoints,
-                  color: Colors.lightBlueAccent,
+                  color: Colors.blueAccent,
                   strokeWidth: 4.0,
-                  isDotted: true,
                 ),
               ],
             ),
-            // Layer to display the markers
             MarkerLayer(markers: _markers),
           ],
         ),
-        // --- UI Elements overlaid on the map ---
         SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(16.0),

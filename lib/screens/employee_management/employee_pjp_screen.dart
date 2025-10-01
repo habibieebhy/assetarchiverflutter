@@ -170,6 +170,7 @@ class _SwipeToStartAction extends StatelessWidget {
             const SnackBar(content: Text('Journey Started!')),
           );
         });
+        return null;
       },
       innerColor: Colors.white,
       outerColor: Theme.of(context).colorScheme.primary.withOpacity(0.5),
