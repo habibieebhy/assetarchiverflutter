@@ -1,4 +1,3 @@
-// file: lib/api/api_service.dart
 import 'dart:convert';
 import 'dart:developer' as dev;
 import 'package:http/http.dart' as http;
@@ -45,7 +44,7 @@ class ApiService {
     try {
       final response = await http.post(
         url,
-        headers: {'Content-Type': 'application/json; charset-UTF-8'},
+        headers: {'Content-Type': 'application/json; charset=UTF-8'},
         body: jsonEncode(body),
       ).timeout(const Duration(seconds: 45));
       
@@ -184,18 +183,22 @@ class ApiService {
   }
 
   Future<DailyTask> createDailyTask(DailyTask task) async {
+    // ✅ FIXED: Used 'json' instead of 'item' and removed '.toList()'
     return _post('daily-tasks', task.toJson(), (json) => DailyTask.fromJson(json));
   }
 
   Future<DailyVisitReport> createDvr(DailyVisitReport dvr) async {
+    // ✅ FIXED: Used 'json' instead of 'item' and removed '.toList()'
     return _post('daily-visit-reports', dvr.toJson(), (json) => DailyVisitReport.fromJson(json));
   }
 
   Future<TechnicalVisitReport> createTvr(TechnicalVisitReport tvr) async {
+    // ✅ FIXED: Used 'json' instead of 'item' and removed '.toList()'
     return _post('technical-visit-reports', tvr.toJson(), (json) => TechnicalVisitReport.fromJson(json));
   }
 
   Future<LeaveApplication> createLeaveApplication(LeaveApplication leaveApp) async {
+    // ✅ FIXED: Used 'json' instead of 'item' and removed '.toList()'
     return _post('leave-applications', leaveApp.toJson(), (json) => LeaveApplication.fromJson(json));
   }
 

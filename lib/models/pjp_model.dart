@@ -1,5 +1,4 @@
-// file: lib/models/pjp_model.dart
-import './dealer_model.dart';
+
 
 class Pjp {
   final String id;
@@ -7,16 +6,10 @@ class Pjp {
   final int createdById;
   final DateTime planDate;
   final String status;
+  final String areaToBeVisited;
   final String? description;
-  final String? dealerId;
-  final Dealer? dealer;
-
-  String get displayArea {
-    if (dealer != null) {
-      return '${dealer!.name}, ${dealer!.address}';
-    }
-    return 'No Dealer Assigned';
-  }
+  final DateTime createdAt;
+  final DateTime updatedAt;
 
   Pjp({
     required this.id,
@@ -24,48 +17,50 @@ class Pjp {
     required this.createdById,
     required this.planDate,
     required this.status,
+    required this.areaToBeVisited,
     this.description,
-    this.dealerId,
-    this.dealer,
+    required this.createdAt,
+    required this.updatedAt,
   });
 
+  /// ✅ FINAL FIX: Reverted to camelCase to match the server's response.
   factory Pjp.fromJson(Map<String, dynamic> json) {
     return Pjp(
       id: json['id'] ?? '',
-      userId: json['user_id'] ?? 0,
-      createdById: json['created_by_id'] ?? 0,
-      planDate: DateTime.tryParse(json['plan_date'] ?? '') ?? DateTime.now(),
+      userId: json['userId'] ?? 0,
+      createdById: json['createdById'] ?? 0,
+      planDate: DateTime.tryParse(json['planDate'] ?? '') ?? DateTime.now(),
       status: json['status'] ?? '',
+      areaToBeVisited: json['areaToBeVisited'] ?? '',
       description: json['description'],
-      dealerId: json['dealer_id'],
-      dealer: null,
+      createdAt: DateTime.tryParse(json['createdAt'] ?? '') ?? DateTime.now(),
+      updatedAt: DateTime.tryParse(json['updatedAt'] ?? '') ?? DateTime.now(),
     );
   }
 
-  /// ✅ FIXED: Removed unnecessary 'this.' qualifiers for cleaner code.
-  Pjp copyWith({ Dealer? dealer }) {
+  Pjp copyWith() {
     return Pjp(
       id: id,
       userId: userId,
       createdById: createdById,
       planDate: planDate,
       status: status,
+      areaToBeVisited: areaToBeVisited,
       description: description,
-      dealerId: dealerId,
-      // 'this.' is still needed here to distinguish the class property
-      // from the 'dealer' parameter being passed into the method.
-      dealer: dealer ?? this.dealer,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
     );
   }
 
+  /// ✅ FINAL FIX: Reverted to camelCase to match the server's validation schema.
   Map<String, dynamic> toJson() {
     return {
       'userId': userId,
       'createdById': createdById,
       'planDate': planDate.toIso8601String().split('T').first,
       'status': status,
+      'areaToBeVisited': areaToBeVisited,
       'description': description,
-      'dealerId': dealerId,
     };
   }
 }
