@@ -1,12 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:assetarchiverflutter/models/employee_model.dart';
 import 'package:assetarchiverflutter/widgets/reusableglasscard.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:maplibre_gl/maplibre_gl.dart';
 import 'package:slide_to_act/slide_to_act.dart';
-// IMPORTED: The new map and location packages
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
-import 'package:geolocator/geolocator.dart';
 
 class EmployeeJourneyScreen extends StatefulWidget {
   final Employee employee;
@@ -17,227 +16,194 @@ class EmployeeJourneyScreen extends StatefulWidget {
 }
 
 class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
-  final MapController _mapController = MapController();
-  StreamSubscription<Position>? _positionStreamSubscription;
+  // --- STATE VARIABLES ---
+  late Future<String> _styleFuture;
+  final _originController = TextEditingController();
+  final _destinationController = TextEditingController();
+  final String? _stadiaApiKey = dotenv.env['STADIA_API_KEY'];
 
-  // --- DYNAMIC STATE VARIABLES ---
-  LatLng? _currentLocation;
-  final List<LatLng> _routePoints = [];
-  final List<Marker> _markers = [];
-  double _totalDistance = 0.0;
-  // State variable to track the map's current zoom level.
-  double _currentZoom = 12.5;
-
-  // Mock destination location
-  static final LatLng _pjpLocation = LatLng(26.1824, 91.7538); // Guwahati
+  // Initial camera position set to Guwahati, Assam
+  static const _initialCameraPosition = CameraPosition(
+    target: LatLng(26.1445, 91.7362),
+    zoom: 12,
+  );
 
   @override
   void initState() {
     super.initState();
-    _startJourney();
+    // Start loading the map style as soon as the screen is initialized
+    _styleFuture = _readStyle();
+    // Pre-fill the origin for demonstration
+    _originController.text = "Current Location";
+  }
+
+  // Asynchronously loads the map style from Stadia Maps
+  Future<String> _readStyle() async {
+    if (_stadiaApiKey == null) {
+      // This error will be caught by the FutureBuilder
+      throw Exception("Stadia Maps API key not found in your .env file");
+    }
+
+    // Using a bright, clear map style from Stadia
+    final styleJson = {
+      "version": 8,
+      "sources": {
+        "stadia": {
+          "type": "raster",
+          "tiles": [
+            "https://tiles.stadiamaps.com/tiles/osm_bright/{z}/{x}/{y}@2x.png?api_key=$_stadiaApiKey"
+          ],
+          "tileSize": 256,
+        }
+      },
+      "layers": [
+        {
+          "id": "stadia-layer",
+          "type": "raster",
+          "source": "stadia",
+          "minzoom": 0,
+          "maxzoom": 22
+        }
+      ]
+    };
+    return jsonEncode(styleJson);
   }
 
   @override
   void dispose() {
-    _positionStreamSubscription?.cancel();
+    _originController.dispose();
+    _destinationController.dispose();
     super.dispose();
-  }
-
-  Future<void> _startJourney() async {
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location permission is required.')));
-        return;
-      }
-    }
-
-    try {
-      Position initialPosition = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-      final initialLatLng = LatLng(initialPosition.latitude, initialPosition.longitude);
-
-      setState(() {
-        _currentLocation = initialLatLng;
-        _routePoints.add(initialLatLng);
-        _markers.add(_buildMarker(initialLatLng, Icons.person_pin_circle, Colors.blue));
-        _markers.add(_buildMarker(_pjpLocation, Icons.location_on, Colors.red));
-      });
-
-      _mapController.move(initialLatLng, 15);
-    } catch (e) {
-      debugPrint("Error getting initial location: $e");
-    }
-
-    const LocationSettings locationSettings = LocationSettings(
-      accuracy: LocationAccuracy.high,
-      distanceFilter: 10,
-    );
-
-    _positionStreamSubscription = Geolocator.getPositionStream(locationSettings: locationSettings).listen((Position position) {
-      final newLocation = LatLng(position.latitude, position.longitude);
-      setState(() {
-        if (_routePoints.isNotEmpty) {
-          final lastPoint = _routePoints.last;
-          final distance = Geolocator.distanceBetween(lastPoint.latitude, lastPoint.longitude, newLocation.latitude, newLocation.longitude);
-          _totalDistance += distance;
-        }
-        _currentLocation = newLocation;
-        _routePoints.add(newLocation);
-
-        _markers.removeWhere((m) => m.key == const Key('currentLocation'));
-        _markers.add(_buildMarker(newLocation, Icons.person_pin_circle, Colors.blue, key: const Key('currentLocation')));
-      });
-      _mapController.move(newLocation, _currentZoom);
-    });
-  }
-
-  Marker _buildMarker(LatLng point, IconData icon, Color color, {Key? key}) {
-    return Marker(
-      key: key,
-      point: point,
-      width: 80,
-      height: 80,
-      child: Icon(icon, color: color, size: 40),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
+    // The Stack allows us to layer UI elements on top of the map
     return Stack(
       children: [
-        FlutterMap(
-          mapController: _mapController,
-          options: MapOptions(
-            initialCenter: _pjpLocation,
-            initialZoom: _currentZoom,
-            // FIXED: Removed the unnecessary null check.
-            onPositionChanged: (position, hasGesture) {
-              _currentZoom = position.zoom;
-            },
-          ),
-          children: [
-            TileLayer(
-              urlTemplate: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-              subdomains: const ['a', 'b', 'c', 'd'],
-            ),
-            PolylineLayer(
-              polylines: [
-                Polyline(
-                  points: _routePoints,
-                  color: Colors.blueAccent,
-                  strokeWidth: 4.0,
+        // --- MAP LAYER (BOTTOM) ---
+        FutureBuilder<String>(
+          future: _styleFuture,
+          builder: (context, snapshot) {
+            // Show a loading indicator while the map style is being fetched
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            // Show an error message if the style fails to load
+            if (snapshot.hasError || !snapshot.hasData) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text(
+                    'Error loading map: ${snapshot.error}',
+                    style: const TextStyle(color: Colors.white),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
-              ],
-            ),
-            MarkerLayer(markers: _markers),
-          ],
+              );
+            }
+
+            // Once the style is loaded, display the map
+            return MapLibreMap(
+              // FIXED: The correct parameter name is 'styleString'.
+              styleString: snapshot.data!,
+              initialCameraPosition: _initialCameraPosition,
+            );
+          },
         ),
+
+        // --- UI LAYER (TOP) ---
         SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
               children: [
-                _buildLocationInputField('From', _currentLocation != null ? 'My Current Location' : 'Getting location...'),
-                const SizedBox(height: 8),
-                _buildLocationInputField('To', 'PJP Destination'),
+                // Origin and Destination input fields
+                _buildLocationInputField(
+                  controller: _originController,
+                  hintText: 'Origin',
+                  icon: Icons.my_location,
+                ),
+                const SizedBox(height: 12),
+                _buildLocationInputField(
+                  controller: _destinationController,
+                  hintText: 'Destination',
+                  icon: Icons.location_on,
+                ),
               ],
             ),
           ),
         ),
-        Positioned(
-          left: 16,
-          right: 16,
-          bottom: 100,
-          child: _buildDetailsCard(),
-        ),
+
+        // --- SLIDER LAYER (BOTTOM) ---
         const Positioned(
           left: 16,
           right: 16,
-          bottom: 24,
-          child: _StartJourneyButton(),
+          bottom: 125,
+          child: _StartJourneySlider(),
         ),
       ],
     );
   }
 
-  Widget _buildLocationInputField(String label, String value) {
-    return LiquidGlassCard(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-        child: Row(
-          children: [
-            Text("$label:", style: const TextStyle(color: Colors.white70)),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Text(
-                value,
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-              ),
+  // A reusable widget for the glass-style text fields
+  Widget _buildLocationInputField({
+    required TextEditingController controller,
+    required String hintText,
+    required IconData icon,
+  }) {
+    // Using your custom LiquidGlassCard for a consistent UI
+    return SizedBox(
+      height: 60,
+      child: LiquidGlassCard(
+        child: Center(
+          child: TextField(
+            controller: controller,
+            style: const TextStyle(color: Color.fromARGB(255, 6, 51, 124)),
+            decoration: InputDecoration(
+              hintText: hintText,
+              hintStyle: TextStyle(color: const Color.fromARGB(255, 39, 66, 164).withAlpha(179)),
+              prefixIcon: Icon(icon, size: 22),
+              // Use the theme's input decoration but remove the default borderr
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
             ),
-          ],
+          ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildDetailsCard() {
-    final distanceInKm = (_totalDistance / 1000).toStringAsFixed(1);
-    return LiquidGlassCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('PJP: Sharma Traders', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 4),
-          Text('$distanceInKm km traveled', style: const TextStyle(color: Colors.white70, fontSize: 14)),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () {},
-                  icon: const Icon(Icons.navigation_outlined, size: 18),
-                  label: const Text('Navigate'),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () {},
-                  icon: const Icon(Icons.call_outlined, size: 18),
-                  label: const Text('Call'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.grey.shade800.withOpacity(0.5),
-                  ),
-                ),
-              ),
-            ],
-          )
-        ],
       ),
     );
   }
 }
 
-class _StartJourneyButton extends StatelessWidget {
-  const _StartJourneyButton();
+// The "Swipe to Start" widget, kept separate for clarity
+class _StartJourneySlider extends StatelessWidget {
+  const _StartJourneySlider();
 
   @override
   Widget build(BuildContext context) {
     return SlideAction(
       onSubmit: () {
+        // We can add the journey start logic here later
+        // For now, it just shows a confirmation message
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Journey tracking started!')),
+          const SnackBar(content: Text('Journey has started!')),
         );
       },
       innerColor: Colors.white,
-      outerColor: Theme.of(context).colorScheme.primary.withOpacity(0.8),
-      sliderButtonIcon: const Icon(Icons.arrow_forward),
-      text: 'START JOURNEY',
-      textStyle: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+      outerColor: Theme.of(context).colorScheme.primary.withAlpha(230),
+      sliderButtonIcon: const Icon(Icons.arrow_forward_ios),
+      text: 'SLIDE TO START JOURNEY',
+      textStyle: const TextStyle(
+        color: Colors.white,
+        fontSize: 16,
+        fontWeight: FontWeight.bold,
+        letterSpacing: 0.5,
+      ),
       borderRadius: 16,
       elevation: 0,
-      height: 60,
+      height: 65,
     );
   }
 }

@@ -84,7 +84,7 @@ class _EmployeePJPScreenState extends State<EmployeePJPScreen> {
         ),
   
         Positioned(
-          bottom: 100.0,
+          bottom: 120.0,
           right: 16.0,
           child: FloatingActionButton(
             onPressed: _showAddPjpForm,

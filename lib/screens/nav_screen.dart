@@ -7,6 +7,8 @@ import 'package:assetarchiverflutter/screens/employee_management/employee_journe
 import 'package:assetarchiverflutter/screens/employee_management/employee_salesorder_screen.dart';
 import 'package:assetarchiverflutter/widgets/reusableglasscard.dart';
 import 'package:flutter/material.dart';
+// ADDED: Import for loading environment variables.
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class NavScreen extends StatefulWidget {
   final Employee employee;
@@ -21,9 +23,30 @@ class _NavScreenState extends State<NavScreen> {
   late final List<Widget> _pages;
   late final List<String> _pageTitles;
 
+  // ADDED: State to track if the .env file has been loaded.
+  bool _isEnvLoaded = false;
+
   @override
   void initState() {
     super.initState();
+    _initializePages();
+    // ADDED: Call the function to load environment variables.
+    _loadEnv();
+  }
+
+  // ADDED: New async function to load the .env file.
+  Future<void> _loadEnv() async {
+    await dotenv.load(fileName: ".env");
+    // Once loaded, rebuild the widget to show the main UI.
+    if (mounted) {
+      setState(() {
+        _isEnvLoaded = true;
+      });
+    }
+  }
+
+  // Moved page initialization to its own function
+  void _initializePages() {
     _pages = [
       EmployeeDashboardScreen(employee: widget.employee),
       EmployeePJPScreen(employee: widget.employee),
@@ -42,8 +65,16 @@ class _NavScreenState extends State<NavScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // FIXED: Reverted to a single Scaffold structure for stability.
-    // This is the most reliable way to handle pages, especially with a map.
+    // UPDATED: Show a loading screen until the .env file is ready.
+    if (!_isEnvLoaded) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    // The original UI is returned only after the .env file is loaded.
     return Scaffold(
       extendBodyBehindAppBar: true,
       extendBody: true,
@@ -61,7 +92,6 @@ class _NavScreenState extends State<NavScreen> {
         ),
       ),
       drawer: _buildGlassDrawer(),
-      // The selected page is now the direct body of the Scaffold.
       body: _pages[_selectedIndex],
       bottomNavigationBar: _buildGlassNavBar(),
     );
@@ -158,4 +188,3 @@ class _NavScreenState extends State<NavScreen> {
     );
   }
 }
-
