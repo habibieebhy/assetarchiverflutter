@@ -47,34 +47,35 @@ class Dealer {
     required this.updatedAt,
   });
 
+  /// This factory now reads snake_case keys from the server's JSON response.
   factory Dealer.fromJson(Map<String, dynamic> json) {
     return Dealer(
       id: json['id'],
-      userId: json['userId'],
+      userId: json['user_id'], // ✅ Fixed
       type: json['type'],
-      parentDealerId: json['parentDealerId'],
+      parentDealerId: json['parent_dealer_id'], // ✅ Fixed
       name: json['name'],
       region: json['region'],
       area: json['area'],
-      phoneNo: json['phoneNo'],
+      phoneNo: json['phone_no'], // ✅ Fixed
       address: json['address'],
-      pinCode: json['pinCode'],
+      pinCode: json['pinCode'], // Unchanged (was already correct in schema)
       latitude: double.tryParse(json['latitude']?.toString() ?? ''),
       longitude: double.tryParse(json['longitude']?.toString() ?? ''),
-      dateOfBirth: json['dateOfBirth'] != null ? DateTime.parse(json['dateOfBirth']) : null,
-      anniversaryDate: json['anniversaryDate'] != null ? DateTime.parse(json['anniversaryDate']) : null,
-      totalPotential: double.parse(json['totalPotential'].toString()),
-      bestPotential: double.parse(json['bestPotential'].toString()),
-      brandSelling: List<String>.from(json['brandSelling'] ?? []),
+      dateOfBirth: json['dateOfBirth'] != null ? DateTime.parse(json['dateOfBirth']) : null, // Unchanged
+      anniversaryDate: json['anniversaryDate'] != null ? DateTime.parse(json['anniversaryDate']) : null, // Unchanged
+      totalPotential: double.parse(json['total_potential'].toString()), // ✅ Fixed
+      bestPotential: double.parse(json['best_potential'].toString()), // ✅ Fixed
+      brandSelling: List<String>.from(json['brand_selling'] ?? []), // ✅ Fixed
       feedbacks: json['feedbacks'],
       remarks: json['remarks'],
-      createdAt: DateTime.parse(json['createdAt']),
-      updatedAt: DateTime.parse(json['updatedAt']),
+      createdAt: DateTime.parse(json['created_at']), // ✅ Fixed
+      updatedAt: DateTime.parse(json['updated_at']), // ✅ Fixed
     );
   }
 
-  // --- THIS IS THE MISSING PART ---
-  /// Converts the Dealer object into a Map for creating a new dealer.
+  /// This method remains unchanged. It sends camelCase keys TO the server,
+  /// which is what Drizzle and your server-side code expect for creating new entries.
   Map<String, dynamic> toJson() {
     return {
       'userId': userId,

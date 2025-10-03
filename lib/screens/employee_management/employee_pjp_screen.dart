@@ -125,6 +125,7 @@ class _PjpCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    // We can still get the dealer for the phone number, etc.
     final dealer = pjp.dealer;
 
     return LiquidGlassCard(
@@ -137,9 +138,11 @@ class _PjpCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(dealer?.name ?? 'Loading Dealer...', style: textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Text(dealer?.address ?? 'No address provided', style: textTheme.bodyMedium?.copyWith(color: Colors.white70)),
+                    // ✅ CHANGED: Use the new displayArea getter for a cleaner look
+                    Text(
+                      pjp.displayArea, 
+                      style: textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold)
+                    ),
                     const SizedBox(height: 8),
                     if (dealer != null && dealer.phoneNo.isNotEmpty)
                       InkWell(
@@ -277,13 +280,13 @@ class _AddPjpFormState extends State<_AddPjpForm> {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     
     try {
+      // ✅ CHANGED: The Pjp constructor no longer needs areaToBeVisited
       final newPjp = Pjp(
         id: '', // Placeholder
         planDate: DateTime.now(),
         userId: int.parse(widget.employee.id),
         createdById: int.parse(widget.employee.id),
         status: 'pending',
-        areaToBeVisited: _selectedDealer!.area, 
         description: _descriptionController.text,
         dealerId: _selectedDealer!.id,
       );

@@ -7,14 +7,16 @@ class Pjp {
   final int createdById;
   final DateTime planDate;
   final String status;
-  final String areaToBeVisited;
   final String? description;
-  
-  // This is populated by the first API call from the PJP list
   final String? dealerId;
-  
-  // This is populated by our second API call (fetching the dealer)
-  final Dealer? dealer; 
+  final Dealer? dealer;
+
+  String get displayArea {
+    if (dealer != null) {
+      return '${dealer!.name}, ${dealer!.address}';
+    }
+    return 'No Dealer Assigned';
+  }
 
   Pjp({
     required this.id,
@@ -22,7 +24,6 @@ class Pjp {
     required this.createdById,
     required this.planDate,
     required this.status,
-    required this.areaToBeVisited,
     this.description,
     this.dealerId,
     this.dealer,
@@ -30,43 +31,41 @@ class Pjp {
 
   factory Pjp.fromJson(Map<String, dynamic> json) {
     return Pjp(
-      id: json['id'],
-      userId: json['userId'],
-      createdById: json['createdById'],
-      planDate: DateTime.parse(json['planDate']),
-      status: json['status'],
-      areaToBeVisited: json['areaToBeVisited'] ?? '', // Handle if null
+      id: json['id'] ?? '',
+      userId: json['user_id'] ?? 0,
+      createdById: json['created_by_id'] ?? 0,
+      planDate: DateTime.tryParse(json['plan_date'] ?? '') ?? DateTime.now(),
+      status: json['status'] ?? '',
       description: json['description'],
-      // We assume the server is sending a dealerId with the PJP list
-      dealerId: json['dealerId'], 
-      dealer: null, // This will be fetched in the second step
+      dealerId: json['dealer_id'],
+      dealer: null,
     );
   }
 
-  // Helper method to create a copy of a PJP with the full dealer info added
+  /// ✅ FIXED: Removed unnecessary 'this.' qualifiers for cleaner code.
   Pjp copyWith({ Dealer? dealer }) {
     return Pjp(
-      id: this.id,
-      userId: this.userId,
-      createdById: this.createdById,
-      planDate: this.planDate,
-      status: this.status,
-      areaToBeVisited: this.areaToBeVisited,
-      description: this.description,
-      dealerId: this.dealerId,
+      id: id,
+      userId: userId,
+      createdById: createdById,
+      planDate: planDate,
+      status: status,
+      description: description,
+      dealerId: dealerId,
+      // 'this.' is still needed here to distinguish the class property
+      // from the 'dealer' parameter being passed into the method.
       dealer: dealer ?? this.dealer,
     );
   }
-  
-  // This creates the JSON for the POST request, matching your server schema
+
   Map<String, dynamic> toJson() {
     return {
       'userId': userId,
       'createdById': createdById,
       'planDate': planDate.toIso8601String().split('T').first,
       'status': status,
-      'areaToBeVisited': areaToBeVisited,
       'description': description,
+      'dealerId': dealerId,
     };
   }
 }
