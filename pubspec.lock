@@ -118,6 +118,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.0"
+  flutter_radar:
+    dependency: "direct main"
+    description:
+      name: flutter_radar
+      sha256: efc9ec321654b16ddbed52ee727502a6fa9b32c0777b4ad78dfca390ab12e38e
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.12.4"
   flutter_shaders:
     dependency: transitive
     description:

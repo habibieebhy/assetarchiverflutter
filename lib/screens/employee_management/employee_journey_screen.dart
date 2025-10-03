@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 import 'package:slide_to_act/slide_to_act.dart';
+// UPDATED: Removed Radar and imported the standard geolocator package.
+import 'package:geolocator/geolocator.dart';
 
 class EmployeeJourneyScreen extends StatefulWidget {
   final Employee employee;
@@ -17,34 +19,93 @@ class EmployeeJourneyScreen extends StatefulWidget {
 
 class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
   // --- STATE VARIABLES ---
+  final Completer<MapLibreMapController> _controllerCompleter = Completer();
   late Future<String> _styleFuture;
   final _originController = TextEditingController();
   final _destinationController = TextEditingController();
   final String? _stadiaApiKey = dotenv.env['STADIA_API_KEY'];
 
-  // Initial camera position set to Guwahati, Assam
+  // Initial camera position is a fallback until user location is found.
   static const _initialCameraPosition = CameraPosition(
-    target: LatLng(26.1445, 91.7362),
+    target: LatLng(26.1445, 91.7362), // Guwahati, Assam
     zoom: 12,
   );
 
   @override
   void initState() {
     super.initState();
-    // Start loading the map style as soon as the screen is initialized
     _styleFuture = _readStyle();
-    // Pre-fill the origin for demonstration
-    _originController.text = "Current Location";
+    // UPDATED: Call the new function to get the device's GPS location.
+    _determinePositionAndMoveCamera();
+  }
+
+  // REPLACED: This function now uses the 'geolocator' package to get the device's exact location.
+  Future<void> _determinePositionAndMoveCamera() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    setState(() {
+      _originController.text = "Checking permissions...";
+    });
+
+    // 1. Check if location services are enabled on the device.
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      setState(() {
+        _originController.text = 'Location services are disabled.';
+      });
+      return;
+    }
+
+    // 2. Check for permissions.
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        setState(() {
+          _originController.text = 'Location permissions are denied';
+        });
+        return;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      setState(() {
+        _originController.text = 'Permissions permanently denied';
+      });
+      return;
+    }
+
+    // 3. If permissions are granted, get the current position.
+    setState(() {
+      _originController.text = "Fetching location...";
+    });
+    try {
+      Position position = await Geolocator.getCurrentPosition();
+      final userLocation = LatLng(position.latitude, position.longitude);
+
+      // 4. Update the UI and animate the map to the user's location.
+      setState(() {
+        _originController.text = "My Current Location";
+      });
+
+      final controller = await _controllerCompleter.future;
+      controller.animateCamera(CameraUpdate.newCameraPosition(
+        CameraPosition(target: userLocation, zoom: 15.0),
+      ));
+    } catch (e) {
+      setState(() {
+        _originController.text = "Failed to get location";
+      });
+      debugPrint("Geolocator error: $e");
+    }
   }
 
   // Asynchronously loads the map style from Stadia Maps
   Future<String> _readStyle() async {
     if (_stadiaApiKey == null) {
-      // This error will be caught by the FutureBuilder
       throw Exception("Stadia Maps API key not found in your .env file");
     }
-
-    // Using a bright, clear map style from Stadia
     final styleJson = {
       "version": 8,
       "sources": {
@@ -78,48 +139,40 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // The Stack allows us to layer UI elements on top of the map
     return Stack(
       children: [
-        // --- MAP LAYER (BOTTOM) ---
         FutureBuilder<String>(
           future: _styleFuture,
           builder: (context, snapshot) {
-            // Show a loading indicator while the map style is being fetched
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
             }
-
-            // Show an error message if the style fails to load
             if (snapshot.hasError || !snapshot.hasData) {
               return Center(
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
-                  child: Text(
-                    'Error loading map: ${snapshot.error}',
-                    style: const TextStyle(color: Colors.white),
-                    textAlign: TextAlign.center,
-                  ),
+                  child: Text('Error loading map: ${snapshot.error}',
+                      style: const TextStyle(color: Colors.white),
+                      textAlign: TextAlign.center),
                 ),
               );
             }
-
-            // Once the style is loaded, display the map
             return MapLibreMap(
-              // FIXED: The correct parameter name is 'styleString'.
               styleString: snapshot.data!,
               initialCameraPosition: _initialCameraPosition,
+              onMapCreated: (controller) {
+                if (!_controllerCompleter.isCompleted) {
+                  _controllerCompleter.complete(controller);
+                }
+              },
             );
           },
         ),
-
-        // --- UI LAYER (TOP) ---
         SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
               children: [
-                // Origin and Destination input fields
                 _buildLocationInputField(
                   controller: _originController,
                   hintText: 'Origin',
@@ -135,40 +188,34 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
             ),
           ),
         ),
-
-        // --- SLIDER LAYER (BOTTOM) ---
         const Positioned(
           left: 16,
           right: 16,
-          bottom: 125,
+          bottom: 24, // Adjusted position for better layout
           child: _StartJourneySlider(),
         ),
       ],
     );
   }
 
-  // A reusable widget for the glass-style text fields
   Widget _buildLocationInputField({
     required TextEditingController controller,
     required String hintText,
     required IconData icon,
   }) {
-    // Using your custom LiquidGlassCard for a consistent UI
     return SizedBox(
       height: 60,
       child: LiquidGlassCard(
         child: Center(
           child: TextField(
             controller: controller,
-            style: const TextStyle(color: Color.fromARGB(255, 6, 51, 124)),
+            readOnly: true,
+            style: const TextStyle(color: Colors.white),
             decoration: InputDecoration(
               hintText: hintText,
-              hintStyle: TextStyle(color: const Color.fromARGB(255, 39, 66, 164).withAlpha(179)),
-              prefixIcon: Icon(icon, size: 22),
-              // Use the theme's input decoration but remove the default borderr
+              hintStyle: TextStyle(color: Colors.white.withAlpha(179)),
+              prefixIcon: Icon(icon, size: 22, color: Colors.white70),
               border: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              focusedBorder: InputBorder.none,
             ),
           ),
         ),
@@ -177,7 +224,6 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
   }
 }
 
-// The "Swipe to Start" widget, kept separate for clarity
 class _StartJourneySlider extends StatelessWidget {
   const _StartJourneySlider();
 
@@ -185,8 +231,6 @@ class _StartJourneySlider extends StatelessWidget {
   Widget build(BuildContext context) {
     return SlideAction(
       onSubmit: () {
-        // We can add the journey start logic here later
-        // For now, it just shows a confirmation message
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Journey has started!')),
         );
