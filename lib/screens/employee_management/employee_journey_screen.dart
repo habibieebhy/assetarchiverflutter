@@ -6,8 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 import 'package:slide_to_act/slide_to_act.dart';
-// UPDATED: Removed Radar and imported the standard geolocator package.
 import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
+import 'package:polyline_codec/polyline_codec.dart';
 
 class EmployeeJourneyScreen extends StatefulWidget {
   final Employee employee;
@@ -18,16 +19,19 @@ class EmployeeJourneyScreen extends StatefulWidget {
 }
 
 class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
-  // --- STATE VARIABLES ---
   final Completer<MapLibreMapController> _controllerCompleter = Completer();
   late Future<String> _styleFuture;
   final _originController = TextEditingController();
   final _destinationController = TextEditingController();
   final String? _stadiaApiKey = dotenv.env['STADIA_API_KEY'];
+  final String? _radarApiKey = dotenv.env['RADAR_PUBLISHABLE_KEY'];
 
-  // Initial camera position is a fallback until user location is found.
+  // --- STATE VARIABLES ---
+  LatLng? _currentUserLocation;
+  LatLng? _destinationLocation;
+
   static const _initialCameraPosition = CameraPosition(
-    target: LatLng(26.1445, 91.7362), // Guwahati, Assam
+    target: LatLng(26.1445, 91.7362),
     zoom: 12,
   );
 
@@ -35,74 +39,210 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
   void initState() {
     super.initState();
     _styleFuture = _readStyle();
-    // UPDATED: Call the new function to get the device's GPS location.
     _determinePositionAndMoveCamera();
   }
 
-  // REPLACED: This function now uses the 'geolocator' package to get the device's exact location.
   Future<void> _determinePositionAndMoveCamera() async {
+    // ... (This function remains largely the same)
     bool serviceEnabled;
     LocationPermission permission;
-
-    setState(() {
-      _originController.text = "Checking permissions...";
-    });
-
-    // 1. Check if location services are enabled on the device.
+    setState(() => _originController.text = "Checking permissions...");
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      setState(() {
-        _originController.text = 'Location services are disabled.';
-      });
+      setState(() => _originController.text = 'Location services are disabled.');
       return;
     }
-
-    // 2. Check for permissions.
     permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        setState(() {
-          _originController.text = 'Location permissions are denied';
-        });
+        setState(() => _originController.text = 'Location permissions are denied');
         return;
       }
     }
-
     if (permission == LocationPermission.deniedForever) {
-      setState(() {
-        _originController.text = 'Permissions permanently denied';
-      });
+      setState(() => _originController.text = 'Permissions permanently denied');
       return;
     }
-
-    // 3. If permissions are granted, get the current position.
-    setState(() {
-      _originController.text = "Fetching location...";
-    });
+    setState(() => _originController.text = "Fetching location...");
     try {
       Position position = await Geolocator.getCurrentPosition();
-      final userLocation = LatLng(position.latitude, position.longitude);
-
-      // 4. Update the UI and animate the map to the user's location.
-      setState(() {
-        _originController.text = "My Current Location";
-      });
+      _currentUserLocation = LatLng(position.latitude, position.longitude);
+      setState(() => _originController.text = "My Current Location");
 
       final controller = await _controllerCompleter.future;
       controller.animateCamera(CameraUpdate.newCameraPosition(
-        CameraPosition(target: userLocation, zoom: 15.0),
+        CameraPosition(target: _currentUserLocation!, zoom: 15.0),
       ));
+      _drawUserLocationPointer(_currentUserLocation!);
     } catch (e) {
-      setState(() {
-        _originController.text = "Failed to get location";
-      });
+      setState(() => _originController.text = "Failed to get location");
       debugPrint("Geolocator error: $e");
     }
   }
 
-  // Asynchronously loads the map style from Stadia Maps
+  Future<void> _drawUserLocationPointer(LatLng point) async {
+    final controller = await _controllerCompleter.future;
+    await controller.removeLayer('user-location-circle-outer');
+    await controller.removeLayer('user-location-circle-inner');
+    await controller.removeSource('user-location-source');
+
+    await controller.addSource(
+      'user-location-source',
+      GeojsonSourceProperties(
+        // FIXED: Wrapped the Feature in a valid FeatureCollection.
+        data: {
+          'type': 'FeatureCollection',
+          'features': [
+            {
+              'type': 'Feature',
+              'properties': {},
+              'geometry': {
+                'type': 'Point',
+                'coordinates': [point.longitude, point.latitude],
+              }
+            }
+          ]
+        },
+      ),
+    );
+
+    await controller.addCircleLayer(
+      'user-location-source',
+      'user-location-circle-outer',
+      const CircleLayerProperties(
+        circleColor: '#FFFFFF',
+        circleRadius: 12.0,
+        circleOpacity: 0.9,
+      ),
+    );
+
+    await controller.addCircleLayer(
+      'user-location-source',
+      'user-location-circle-inner',
+      const CircleLayerProperties(
+        circleColor: '#3567FB',
+        circleRadius: 8.0,
+        circleOpacity: 1.0,
+      ),
+    );
+  }
+
+  Future<void> _handleDestinationSubmit(String destinationAddress) async {
+    // ... (This function remains the same)
+    if (_radarApiKey == null) {
+      _showError("Radar API Key is not configured.");
+      return;
+    }
+    if (_currentUserLocation == null) {
+      _showError("Current location not available. Cannot search.");
+      return;
+    }
+
+    final autocompleteUrl = Uri.parse(
+        'https://api.radar.io/v1/autocomplete?query=$destinationAddress&near=${_currentUserLocation!.latitude},${_currentUserLocation!.longitude}');
+    try {
+      final response = await http.get(
+        autocompleteUrl,
+        headers: {'Authorization': _radarApiKey!},
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['addresses'] != null && data['addresses'].isNotEmpty) {
+          final lat = data['addresses'][0]['latitude'];
+          final lon = data['addresses'][0]['longitude'];
+          setState(() {
+            _destinationLocation = LatLng(lat, lon);
+          });
+          _getDirectionsAndDrawRoute();
+        } else {
+          _showError("Could not find location: $destinationAddress");
+        }
+      } else {
+        throw Exception('Failed to geocode address: ${response.body}');
+      }
+    } catch (e) {
+      _showError("Error finding destination: $e");
+    }
+  }
+
+  Future<void> _getDirectionsAndDrawRoute() async {
+    if (_currentUserLocation == null || _destinationLocation == null) {
+      _showError("Origin or destination is not set.");
+      return;
+    }
+
+    final locations =
+        '${_currentUserLocation!.latitude},${_currentUserLocation!.longitude}|${_destinationLocation!.latitude},${_destinationLocation!.longitude}';
+    final url = Uri.parse(
+        'https://api.radar.io/v1/route/directions?locations=$locations&mode=car&units=metric&geometry=polyline5');
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {'Authorization': _radarApiKey!},
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final polylineString = data['routes'][0]['geometry']['polyline'];
+        final polyline = PolylineCodec.decode(polylineString);
+        final routePoints = polyline
+            .map((p) => LatLng(p[0].toDouble(), p[1].toDouble()))
+            .toList();
+        
+        final controller = await _controllerCompleter.future;
+        await controller.removeLayer('route-line');
+        await controller.removeSource('route-source');
+        
+        await controller.addSource(
+          'route-source',
+          GeojsonSourceProperties(
+            // FIXED: Wrapped the Feature in a valid FeatureCollection.
+            data: {
+              'type': 'FeatureCollection',
+              'features': [
+                {
+                  'type': 'Feature',
+                  'properties': {},
+                  'geometry': {
+                    'type': 'LineString',
+                    'coordinates': routePoints.map((p) => [p.longitude, p.latitude]).toList(),
+                  }
+                }
+              ]
+            },
+          ),
+        );
+        await controller.addLineLayer(
+          'route-source',
+          'route-line',
+          const LineLayerProperties(
+            lineColor: '#3567FB',
+            lineWidth: 5.0,
+            lineOpacity: 0.8,
+            lineCap: 'round',
+            lineJoin: 'round',
+          ),
+        );
+      } else {
+        throw Exception('Failed to load directions: ${response.body}');
+      }
+    } catch (e) {
+      _showError("Error fetching route: $e");
+    }
+  }
+
+  void _showError(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    }
+    debugPrint(message);
+  }
+
   Future<String> _readStyle() async {
+    // ... (This function remains the same)
     if (_stadiaApiKey == null) {
       throw Exception("Stadia Maps API key not found in your .env file");
     }
@@ -139,6 +279,7 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // ... (The build method is unchanged)
     return Stack(
       children: [
         FutureBuilder<String>(
@@ -177,21 +318,24 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
                   controller: _originController,
                   hintText: 'Origin',
                   icon: Icons.my_location,
+                  readOnly: true,
                 ),
                 const SizedBox(height: 12),
                 _buildLocationInputField(
                   controller: _destinationController,
-                  hintText: 'Destination',
+                  hintText: 'Enter Destination...',
                   icon: Icons.location_on,
+                  readOnly: false,
+                  onSubmitted: _handleDestinationSubmit,
                 ),
               ],
             ),
           ),
         ),
-        const Positioned(
+        Positioned(
           left: 16,
           right: 16,
-          bottom: 24, // Adjusted position for better layout
+          bottom: 120,
           child: _StartJourneySlider(),
         ),
       ],
@@ -202,14 +346,18 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
     required TextEditingController controller,
     required String hintText,
     required IconData icon,
+    bool readOnly = false,
+    void Function(String)? onSubmitted,
   }) {
+    // ... (This widget is unchanged)
     return SizedBox(
       height: 60,
       child: LiquidGlassCard(
         child: Center(
           child: TextField(
             controller: controller,
-            readOnly: true,
+            readOnly: readOnly,
+            onSubmitted: onSubmitted,
             style: const TextStyle(color: Colors.white),
             decoration: InputDecoration(
               hintText: hintText,
@@ -229,11 +377,13 @@ class _StartJourneySlider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // ... (This widget is unchanged)
     return SlideAction(
       onSubmit: () {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Journey has started!')),
         );
+        return null;
       },
       innerColor: Colors.white,
       outerColor: Theme.of(context).colorScheme.primary.withAlpha(230),
