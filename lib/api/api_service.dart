@@ -64,6 +64,33 @@ class ApiService {
     }
   }
   
+  // --- NEW: GENERIC PATCH HELPER ---
+  Future<T> _patch<T>(String endpoint, Map<String, dynamic> body, T Function(dynamic json) fromJson) async {
+    final url = Uri.parse('$_baseUrl/api/$endpoint');
+    dev.log('PATCH: $url', name: 'ApiService');
+    try {
+      final response = await http.patch(
+        url,
+        headers: {'Content-Type': 'application/json; charset=UTF-8'},
+        body: jsonEncode(body),
+      ).timeout(const Duration(seconds: 45));
+      
+      final jsonData = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        if (jsonData['success'] == true && jsonData['data'] != null) {
+          return fromJson(jsonData['data']);
+        } else {
+          throw Exception(jsonData['error'] ?? 'API returned success: false');
+        }
+      } else {
+        throw Exception(jsonData['error'] ?? 'Failed to update item. Status: ${response.statusCode}');
+      }
+    } catch (e) {
+      dev.log('API Error on PATCH $endpoint', error: e, name: 'ApiService');
+      rethrow;
+    }
+  }
+
   Future<void> _delete(String endpoint) async {
     final url = Uri.parse('$_baseUrl/api/$endpoint');
     dev.log('DELETE: $url', name: 'ApiService');
@@ -183,24 +210,28 @@ class ApiService {
   }
 
   Future<DailyTask> createDailyTask(DailyTask task) async {
-    // ✅ FIXED: Used 'json' instead of 'item' and removed '.toList()'
     return _post('daily-tasks', task.toJson(), (json) => DailyTask.fromJson(json));
   }
 
   Future<DailyVisitReport> createDvr(DailyVisitReport dvr) async {
-    // ✅ FIXED: Used 'json' instead of 'item' and removed '.toList()'
     return _post('daily-visit-reports', dvr.toJson(), (json) => DailyVisitReport.fromJson(json));
   }
 
   Future<TechnicalVisitReport> createTvr(TechnicalVisitReport tvr) async {
-    // ✅ FIXED: Used 'json' instead of 'item' and removed '.toList()'
     return _post('technical-visit-reports', tvr.toJson(), (json) => TechnicalVisitReport.fromJson(json));
   }
 
   Future<LeaveApplication> createLeaveApplication(LeaveApplication leaveApp) async {
-    // ✅ FIXED: Used 'json' instead of 'item' and removed '.toList()'
     return _post('leave-applications', leaveApp.toJson(), (json) => LeaveApplication.fromJson(json));
   }
+  
+  // --- PATCH METHODS ---
+  
+  // --- NEW: This is the missing function ---
+  Future<Pjp> updatePjp(String pjpId, Map<String, dynamic> data) async {
+    return _patch('pjp/$pjpId', data, (json) => Pjp.fromJson(json));
+  }
+
 
   // --- DELETE METHODS ---
   

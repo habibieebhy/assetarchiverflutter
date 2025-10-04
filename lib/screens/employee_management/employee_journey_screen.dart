@@ -12,7 +12,16 @@ import 'package:polyline_codec/polyline_codec.dart';
 
 class EmployeeJourneyScreen extends StatefulWidget {
   final Employee employee;
-  const EmployeeJourneyScreen({super.key, required this.employee});
+  // --- FIXED: Added the required parameters to the constructor ---
+  final String? initialDestination;
+  final VoidCallback? onDestinationConsumed;
+
+  const EmployeeJourneyScreen({
+    super.key,
+    required this.employee,
+    this.initialDestination,
+    this.onDestinationConsumed,
+  });
 
   @override
   State<EmployeeJourneyScreen> createState() => _EmployeeJourneyScreenState();
@@ -26,7 +35,6 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
   final String? _stadiaApiKey = dotenv.env['STADIA_API_KEY'];
   final String? _radarApiKey = dotenv.env['RADAR_PUBLISHABLE_KEY'];
 
-  // --- STATE VARIABLES ---
   LatLng? _currentUserLocation;
   LatLng? _destinationLocation;
 
@@ -39,11 +47,26 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
   void initState() {
     super.initState();
     _styleFuture = _readStyle();
-    _determinePositionAndMoveCamera();
+    // --- UPDATED: Centralized initialization logic ---
+    _initializeJourney();
+  }
+
+  // --- NEW: This method handles the full initialization logic ---
+  Future<void> _initializeJourney() async {
+    // First, get the user's current location
+    await _determinePositionAndMoveCamera();
+
+    // THEN, if an initial destination was passed from the PJP screen, process it
+    if (widget.initialDestination != null && widget.initialDestination!.isNotEmpty) {
+      _destinationController.text = widget.initialDestination!;
+      // Automatically trigger the search and route drawing
+      await _handleDestinationSubmit(widget.initialDestination!);
+      // Inform the NavScreen that the destination has been used
+      widget.onDestinationConsumed?.call();
+    }
   }
 
   Future<void> _determinePositionAndMoveCamera() async {
-    // ... (This function remains largely the same)
     bool serviceEnabled;
     LocationPermission permission;
     setState(() => _originController.text = "Checking permissions...");
@@ -71,7 +94,7 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
       setState(() => _originController.text = "My Current Location");
 
       final controller = await _controllerCompleter.future;
-      controller.animateCamera(CameraUpdate.newCameraPosition(
+      await controller.animateCamera(CameraUpdate.newCameraPosition(
         CameraPosition(target: _currentUserLocation!, zoom: 15.0),
       ));
       _drawUserLocationPointer(_currentUserLocation!);
@@ -86,11 +109,9 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
     await controller.removeLayer('user-location-circle-outer');
     await controller.removeLayer('user-location-circle-inner');
     await controller.removeSource('user-location-source');
-
     await controller.addSource(
       'user-location-source',
       GeojsonSourceProperties(
-        // FIXED: Wrapped the Feature in a valid FeatureCollection.
         data: {
           'type': 'FeatureCollection',
           'features': [
@@ -106,30 +127,21 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
         },
       ),
     );
-
     await controller.addCircleLayer(
       'user-location-source',
       'user-location-circle-outer',
       const CircleLayerProperties(
-        circleColor: '#FFFFFF',
-        circleRadius: 12.0,
-        circleOpacity: 0.9,
-      ),
+        circleColor: '#FFFFFF', circleRadius: 12.0, circleOpacity: 0.9),
     );
-
     await controller.addCircleLayer(
       'user-location-source',
       'user-location-circle-inner',
       const CircleLayerProperties(
-        circleColor: '#3567FB',
-        circleRadius: 8.0,
-        circleOpacity: 1.0,
-      ),
+        circleColor: '#3567FB', circleRadius: 8.0, circleOpacity: 1.0),
     );
   }
 
   Future<void> _handleDestinationSubmit(String destinationAddress) async {
-    // ... (This function remains the same)
     if (_radarApiKey == null) {
       _showError("Radar API Key is not configured.");
       return;
@@ -138,7 +150,6 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
       _showError("Current location not available. Cannot search.");
       return;
     }
-
     final autocompleteUrl = Uri.parse(
         'https://api.radar.io/v1/autocomplete?query=$destinationAddress&near=${_currentUserLocation!.latitude},${_currentUserLocation!.longitude}');
     try {
@@ -146,7 +157,6 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
         autocompleteUrl,
         headers: {'Authorization': _radarApiKey!},
       );
-
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['addresses'] != null && data['addresses'].isNotEmpty) {
@@ -172,18 +182,15 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
       _showError("Origin or destination is not set.");
       return;
     }
-
     final locations =
         '${_currentUserLocation!.latitude},${_currentUserLocation!.longitude}|${_destinationLocation!.latitude},${_destinationLocation!.longitude}';
     final url = Uri.parse(
         'https://api.radar.io/v1/route/directions?locations=$locations&mode=car&units=metric&geometry=polyline5');
-
     try {
       final response = await http.get(
         url,
         headers: {'Authorization': _radarApiKey!},
       );
-
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         final polylineString = data['routes'][0]['geometry']['polyline'];
@@ -191,15 +198,12 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
         final routePoints = polyline
             .map((p) => LatLng(p[0].toDouble(), p[1].toDouble()))
             .toList();
-        
         final controller = await _controllerCompleter.future;
         await controller.removeLayer('route-line');
         await controller.removeSource('route-source');
-        
         await controller.addSource(
           'route-source',
           GeojsonSourceProperties(
-            // FIXED: Wrapped the Feature in a valid FeatureCollection.
             data: {
               'type': 'FeatureCollection',
               'features': [
@@ -208,7 +212,9 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
                   'properties': {},
                   'geometry': {
                     'type': 'LineString',
-                    'coordinates': routePoints.map((p) => [p.longitude, p.latitude]).toList(),
+                    'coordinates': routePoints
+                        .map((p) => [p.longitude, p.latitude])
+                        .toList(),
                   }
                 }
               ]
@@ -236,13 +242,13 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
 
   void _showError(String message) {
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
     }
     debugPrint(message);
   }
 
   Future<String> _readStyle() async {
-    // ... (This function remains the same)
     if (_stadiaApiKey == null) {
       throw Exception("Stadia Maps API key not found in your .env file");
     }
@@ -260,8 +266,8 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
       "layers": [
         {
           "id": "stadia-layer",
-          "type": "raster",
           "source": "stadia",
+          "type": "raster",
           "minzoom": 0,
           "maxzoom": 22
         }
@@ -279,7 +285,6 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ... (The build method is unchanged)
     return Stack(
       children: [
         FutureBuilder<String>(
@@ -335,7 +340,7 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
         Positioned(
           left: 16,
           right: 16,
-          bottom: 120,
+          bottom: 124,
           child: _StartJourneySlider(),
         ),
       ],
@@ -349,7 +354,6 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
     bool readOnly = false,
     void Function(String)? onSubmitted,
   }) {
-    // ... (This widget is unchanged)
     return SizedBox(
       height: 60,
       child: LiquidGlassCard(
@@ -377,7 +381,6 @@ class _StartJourneySlider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ... (This widget is unchanged)
     return SlideAction(
       onSubmit: () {
         ScaffoldMessenger.of(context).showSnackBar(

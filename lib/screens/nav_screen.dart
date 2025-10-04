@@ -7,7 +7,6 @@ import 'package:assetarchiverflutter/screens/employee_management/employee_journe
 import 'package:assetarchiverflutter/screens/employee_management/employee_salesorder_screen.dart';
 import 'package:assetarchiverflutter/widgets/reusableglasscard.dart';
 import 'package:flutter/material.dart';
-// ADDED: Import for loading environment variables.
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class NavScreen extends StatefulWidget {
@@ -20,24 +19,22 @@ class NavScreen extends StatefulWidget {
 
 class _NavScreenState extends State<NavScreen> {
   int _selectedIndex = 0;
-  late final List<Widget> _pages;
-  late final List<String> _pageTitles;
+  late List<Widget> _pages;
+  final List<String> _pageTitles = ['Home', 'PJP', 'Sales Order', 'Journey', 'Profile'];
 
-  // ADDED: State to track if the .env file has been loaded.
   bool _isEnvLoaded = false;
+  String? _destinationFromPJP;
 
   @override
   void initState() {
     super.initState();
-    _initializePages();
-    // ADDED: Call the function to load environment variables.
     _loadEnv();
+    // --- FIXED: Pages are now initialized only ONCE for better performance ---
+    _buildPages();
   }
 
-  // ADDED: New async function to load the .env file.
   Future<void> _loadEnv() async {
     await dotenv.load(fileName: ".env");
-    // Once loaded, rebuild the widget to show the main UI.
     if (mounted) {
       setState(() {
         _isEnvLoaded = true;
@@ -45,16 +42,21 @@ class _NavScreenState extends State<NavScreen> {
     }
   }
 
-  // Moved page initialization to its own function
-  void _initializePages() {
-    _pages = [
-      EmployeeDashboardScreen(employee: widget.employee),
-      EmployeePJPScreen(employee: widget.employee),
-      SalesOrderScreen(employee: widget.employee),
-      EmployeeJourneyScreen(employee: widget.employee),
-      EmployeeProfileScreen(employee: widget.employee),
-    ];
-    _pageTitles = ['Home', 'PJP', 'Sales Order', 'Journey', 'Profile'];
+  void _navigateToJourneyWithDestination(String destination) {
+    setState(() {
+      _destinationFromPJP = destination;
+      _selectedIndex = 3;
+    });
+  }
+
+  void _clearPJPDestination() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _destinationFromPJP != null) {
+        setState(() {
+          _destinationFromPJP = null;
+        });
+      }
+    });
   }
 
   void _onItemTapped(int index) {
@@ -63,18 +65,42 @@ class _NavScreenState extends State<NavScreen> {
     });
   }
 
+  // This method now initializes the page list once.
+  void _buildPages() {
+    _pages = [
+      EmployeeDashboardScreen(employee: widget.employee),
+      EmployeePJPScreen(
+        employee: widget.employee,
+        onStartJourney: _navigateToJourneyWithDestination,
+      ),
+      SalesOrderScreen(employee: widget.employee),
+      EmployeeJourneyScreen(
+        employee: widget.employee,
+        // The key ensures a new state is created when the destination changes
+        key: ValueKey(_destinationFromPJP),
+        initialDestination: _destinationFromPJP,
+        onDestinationConsumed: _clearPJPDestination,
+      ),
+      EmployeeProfileScreen(employee: widget.employee),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
-    // UPDATED: Show a loading screen until the .env file is ready.
     if (!_isEnvLoaded) {
       return const Scaffold(
+        backgroundColor: Color(0xFF0D47A1),
         body: Center(
-          child: CircularProgressIndicator(),
+          child: CircularProgressIndicator(color: Colors.white),
         ),
       );
     }
 
-    // The original UI is returned only after the .env file is loaded.
+    // --- UPDATED: Rebuild pages only if the destination has changed ---
+    if (_destinationFromPJP != null) {
+      _buildPages();
+    }
+
     return Scaffold(
       extendBodyBehindAppBar: true,
       extendBody: true,
@@ -92,7 +118,11 @@ class _NavScreenState extends State<NavScreen> {
         ),
       ),
       drawer: _buildGlassDrawer(),
-      body: _pages[_selectedIndex],
+      // --- FIXED: Using IndexedStack to keep page states alive and prevent crashes ---
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: _pages,
+      ),
       bottomNavigationBar: _buildGlassNavBar(),
     );
   }
@@ -188,3 +218,4 @@ class _NavScreenState extends State<NavScreen> {
     );
   }
 }
+

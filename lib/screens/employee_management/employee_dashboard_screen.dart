@@ -17,7 +17,7 @@ class EmployeeDashboardScreen extends StatefulWidget {
   State<EmployeeDashboardScreen> createState() => _EmployeeDashboardScreenState();
 }
 
-class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
+class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> with WidgetsBindingObserver {
   final ApiService _apiService = ApiService();
   late Future<List<Pjp>> _pjpFuture;
   bool _isCheckingIn = false;
@@ -28,11 +28,35 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _setGreeting();
-    _pjpFuture = _apiService.fetchPjpsForUser(
-      int.parse(widget.employee.id),
-      status: 'pending',
-    );
+    refreshPjps(); // Initial data fetch
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      refreshPjps();
+    }
+  }
+
+  // --- UPDATED: This method is now public so NavScreen can call it ---
+  void refreshPjps() {
+    if (mounted) {
+      setState(() {
+        _pjpFuture = _apiService.fetchPjpsForUser(
+          int.parse(widget.employee.id),
+          status: 'pending',
+        );
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   void _setGreeting() {
@@ -47,7 +71,6 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
   }
 
   Future<void> _handleCheckIn() async {
-    // --- THE FIX: Store the messenger before the async gap ---
     final scaffoldMessenger = ScaffoldMessenger.of(context);
 
     setState(() => _isCheckingIn = true);
@@ -60,10 +83,8 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
         'inTimeLongitude': 91.7362,
       };
 
-      // This 'await' is the async gap.
       await _apiService.checkIn(checkInData);
 
-      // --- THE FIX: Use the stored variable after the gap ---
       scaffoldMessenger.showSnackBar(
         const SnackBar(content: Text('Checked in successfully!'), backgroundColor: Colors.green),
       );
@@ -77,7 +98,6 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
   }
 
   Future<void> _handleCheckOut() async {
-    // --- THE FIX: Store the messenger before the async gap ---
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     
     setState(() => _isCheckingOut = true);
@@ -87,10 +107,8 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
         'attendanceDate': DateTime.now().toIso8601String(),
       };
       
-      // This 'await' is the async gap.
       await _apiService.checkOut(checkOutData);
 
-      // --- THE FIX: Use the stored variable after the gap ---
       scaffoldMessenger.showSnackBar(
         const SnackBar(content: Text('Checked out successfully!'), backgroundColor: Colors.blue),
       );
@@ -105,7 +123,6 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ... (The rest of your build method is perfectly fine, no changes needed here)
     final theme = Theme.of(context);
     final textTheme = theme.textTheme;
 
@@ -190,7 +207,10 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
 
                   if (!snapshot.hasData || snapshot.data!.isEmpty) {
                     return LiquidGlassCard(
-                       child: Center(child: Text('No active PJPs found.', style: TextStyle(color: Colors.white70))),
+                       child: Padding(
+                         padding: const EdgeInsets.all(16.0),
+                         child: Center(child: Text('No active PJPs found.', style: TextStyle(color: Colors.white70))),
+                       ),
                     );
                   }
 
@@ -225,3 +245,4 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> {
     );
   }
 }
+

@@ -4,10 +4,17 @@ import 'package:flutter/material.dart';
 import 'package:assetarchiverflutter/api/api_service.dart';
 import 'package:assetarchiverflutter/models/pjp_model.dart';
 import 'package:assetarchiverflutter/models/dealer_model.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 
 class EmployeePJPScreen extends StatefulWidget {
   final Employee employee;
-  const EmployeePJPScreen({super.key, required this.employee});
+  final Function(String) onStartJourney;
+
+  const EmployeePJPScreen({
+    super.key,
+    required this.employee,
+    required this.onStartJourney,
+  });
 
   @override
   State<EmployeePJPScreen> createState() => _EmployeePJPScreenState();
@@ -20,13 +27,51 @@ class _EmployeePJPScreenState extends State<EmployeePJPScreen> {
   @override
   void initState() {
     super.initState();
-    _pjpFuture = _apiService.fetchPjpsForUser(int.parse(widget.employee.id));
+    // Initially fetch only 'pending' PJPs
+    _pjpFuture = _apiService.fetchPjpsForUser(int.parse(widget.employee.id), status: 'pending');
   }
 
   void _refreshPjpList() {
     setState(() {
-      _pjpFuture = _apiService.fetchPjpsForUser(int.parse(widget.employee.id));
+      _pjpFuture = _apiService.fetchPjpsForUser(int.parse(widget.employee.id), status: 'pending');
     });
+  }
+
+  // --- NEW: This function handles starting the journey and updating the API ---
+  Future<void> _startJourneyForPjp(Pjp pjp) async {
+    // Store context to use across async gaps
+    final navigator = Navigator.of(context);
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+    try {
+      // Show a loading dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          return const Center(child: CircularProgressIndicator());
+        },
+      );
+
+      // Call the API to update the PJP status to "started"
+      await _apiService.updatePjp(pjp.id, {'status': 'started'});
+
+      // Hide the loading dialog
+      navigator.pop();
+
+      // Trigger navigation to the journey screen
+      widget.onStartJourney(pjp.areaToBeVisited);
+
+      // Refresh the PJP list to remove the started one from view
+      _refreshPjpList();
+
+    } catch (e) {
+      // Hide the loading dialog and show an error
+      navigator.pop();
+      scaffoldMessenger.showSnackBar(
+        SnackBar(content: Text('Failed to start journey: $e'), backgroundColor: Colors.red),
+      );
+    }
   }
 
   void _showAddPjpForm() {
@@ -65,16 +110,33 @@ class _EmployeePJPScreenState extends State<EmployeePJPScreen> {
                   return Center(child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.yellow)));
                 }
                 if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return const Center(child: Text('No PJPs found.', style: TextStyle(color: Colors.white70)));
+                  return const Center(child: Text('No Pending PJPs found.', style: TextStyle(color: Colors.white70)));
                 }
                 final pjpList = snapshot.data!;
                 return ListView.builder(
                   padding: EdgeInsets.only(top: kToolbarHeight + MediaQuery.of(context).padding.top, bottom: 80),
                   itemCount: pjpList.length,
                   itemBuilder: (context, index) {
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                      child: _PjpCard(pjp: pjpList[index]),
+                    final pjp = pjpList[index];
+                    return Slidable(
+                      key: ValueKey(pjp.id),
+                      startActionPane: ActionPane(
+                        motion: const StretchMotion(),
+                        children: [
+                          SlidableAction(
+                            onPressed: (_) => _startJourneyForPjp(pjp),
+                            backgroundColor: Colors.green,
+                            foregroundColor: Colors.white,
+                            icon: Icons.route,
+                            label: 'Start Journey',
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ],
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                        child: _PjpCard(pjp: pjp),
+                      ),
                     );
                   },
                 );
@@ -82,7 +144,6 @@ class _EmployeePJPScreenState extends State<EmployeePJPScreen> {
             ),
           ),
         ),
-  
         Positioned(
           bottom: 120.0,
           right: 16.0,
@@ -110,27 +171,17 @@ class _PjpCard extends StatelessWidget {
         children: [
           Expanded(
             child: Text(
-              pjp.areaToBeVisited, 
+              pjp.areaToBeVisited,
               style: textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold)
             ),
           ),
           const SizedBox(width: 16),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12.0),
-            child: SizedBox(
-              width: 80, height: 80,
-              child: Stack(fit: StackFit.expand, alignment: Alignment.center, children: [
-                Image.network('https://placehold.co/160x160/334155/e2e8f0?text=Map', fit: BoxFit.cover, errorBuilder: (c, e, s) => Container(color: Colors.grey.shade800)),
-                const Icon(Icons.location_on, color: Colors.redAccent, size: 40),
-              ]),
-            ),
-          ),
+          const Icon(Icons.keyboard_arrow_left, color: Colors.white70, size: 30),
         ],
       ),
     );
   }
 }
-
 
 class _AddPjpForm extends StatefulWidget {
   final Employee employee;
@@ -193,7 +244,6 @@ class _AddPjpFormState extends State<_AddPjpForm> {
       scaffoldMessenger.showSnackBar(const SnackBar(content: Text('PJP Created!'), backgroundColor: Colors.green));
 
     } catch (e) {
-      // ✅ DEBUGGING LINES ADDED HERE
       debugPrint('--- FAILED TO CREATE PJP ---');
       debugPrint('Error: $e');
 
@@ -265,3 +315,4 @@ class _AddPjpFormState extends State<_AddPjpForm> {
     );
   }
 }
+

@@ -20,9 +20,11 @@ dependencies:
   location: ^6.0.2
   geolocator: ^12.0.0
   geocoding: ^3.0.0
+  socket_io_client: ^3.1.2
   flutter_polyline_points: ^2.0.0
   polyline_codec: ^0.1.6
   flutter_radar: ^3.12.4
+  flutter_slidable: ^3.1.0
 
 dev_dependencies:
   flutter_test:
