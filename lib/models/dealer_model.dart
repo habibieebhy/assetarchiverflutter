@@ -1,4 +1,4 @@
-
+// models/dealer_model.dart
 
 class Dealer {
   final String id;
@@ -47,7 +47,6 @@ class Dealer {
     required this.updatedAt,
   });
 
-  /// ✅ FINAL FIX: Reverted to camelCase to match the server's response.
   factory Dealer.fromJson(Map<String, dynamic> json) {
     return Dealer(
       id: json['id'] ?? '',
@@ -74,7 +73,6 @@ class Dealer {
     );
   }
 
-  /// ✅ FINAL FIX: Reverted to camelCase to match the server's validation schema.
   Map<String, dynamic> toJson() {
     return {
       'userId': userId,
@@ -88,11 +86,29 @@ class Dealer {
       'pinCode': pinCode,
       'dateOfBirth': dateOfBirth?.toIso8601String(),
       'anniversaryDate': anniversaryDate?.toIso8601String(),
-      'totalPotential': totalPotential,
-      'bestPotential': bestPotential,
+      // --- CHANGED TO STRINGS TO MATCH SERVER EXPECTATIONS ---
+      'totalPotential': totalPotential.toString(),
+      'bestPotential': bestPotential.toString(),
       'brandSelling': brandSelling,
       'feedbacks': feedbacks,
       'remarks': remarks,
+      'createdAt': createdAt.toIso8601String(),
+      'updatedAt': updatedAt.toIso8601String(),
     };
+  }
+  
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Dealer &&
+          runtimeType == other.runtimeType &&
+          id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
+
+  @override
+  String toString() {
+    return 'Dealer{id: $id, name: $name}';
   }
 }

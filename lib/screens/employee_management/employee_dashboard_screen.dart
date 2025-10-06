@@ -1,9 +1,13 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:assetarchiverflutter/widgets/reusableglasscard.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:assetarchiverflutter/models/employee_model.dart';
 import 'package:assetarchiverflutter/api/api_service.dart';
 import 'package:assetarchiverflutter/models/pjp_model.dart';
+import 'package:image_picker/image_picker.dart';
+// --- NEW: Imported Geolocator for live location data ---
+import 'package:geolocator/geolocator.dart';
 
 class EmployeeDashboardScreen extends StatefulWidget {
   final Employee employee;
@@ -14,10 +18,12 @@ class EmployeeDashboardScreen extends StatefulWidget {
   });
 
   @override
-  State<EmployeeDashboardScreen> createState() => _EmployeeDashboardScreenState();
+  // --- FIXED: Changed to public state type ---
+  State<EmployeeDashboardScreen> createState() => EmployeeDashboardScreenState();
 }
 
-class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> with WidgetsBindingObserver {
+// --- FIXED: Renamed the class to be public (removed the '_') ---
+class EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> with WidgetsBindingObserver {
   final ApiService _apiService = ApiService();
   late Future<List<Pjp>> _pjpFuture;
   bool _isCheckingIn = false;
@@ -29,8 +35,9 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> with 
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+
     _setGreeting();
-    refreshPjps(); // Initial data fetch
+    refreshPjps();
   }
 
   @override
@@ -40,8 +47,8 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> with 
       refreshPjps();
     }
   }
-
-  // --- UPDATED: This method is now public so NavScreen can call it ---
+  
+  // --- This method is now public so NavScreen can call it ---
   void refreshPjps() {
     if (mounted) {
       setState(() {
@@ -69,18 +76,82 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> with 
       _greeting = 'Good Evening';
     }
   }
+  
+  Future<File?> _captureImage() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(
+      source: ImageSource.camera,
+      preferredCameraDevice: CameraDevice.front,
+      imageQuality: 50,
+    );
+    if (image != null) {
+      return File(image.path);
+    }
+    return null;
+  }
+  
+  // --- NEW: Helper to get current device position ---
+  Future<Position?> _getCurrentPosition() async {
+     try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!mounted) return null;
+      if (!serviceEnabled) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location services are disabled.')));
+        return null;
+      }
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (!mounted) return null;
+        if (permission == LocationPermission.denied) {
+           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location permissions are denied')));
+           return null;
+        }
+      }
+      if (permission == LocationPermission.deniedForever) {
+        if (!mounted) return null;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location permissions are permanently denied, we cannot request permissions.')));
+        return null;
+      }
+      return await Geolocator.getCurrentPosition();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to get location: $e')));
+      }
+      return null;
+    }
+  }
 
+
+  // --- UPDATED: Now uses image capture and live location data ---
   Future<void> _handleCheckIn() async {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
-
     setState(() => _isCheckingIn = true);
+
     try {
+      final position = await _getCurrentPosition();
+      if (position == null) {
+        if(mounted) setState(() => _isCheckingIn = false);
+        return;
+      }
+
+      final imageFile = await _captureImage();
+      if (imageFile == null) {
+        if(mounted) setState(() => _isCheckingIn = false);
+        return;
+      }
+
+      scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Uploading image...')));
+      final imageUrl = await _apiService.uploadImageToR2(imageFile);
+
       final checkInData = {
         'userId': int.parse(widget.employee.id),
         'attendanceDate': DateTime.now().toIso8601String(),
-        'locationName': 'Guwahati, Assam',
-        'inTimeLatitude': 26.1445,
-        'inTimeLongitude': 91.7362,
+        'locationName': 'Live Location', // Updated
+        'inTimeLatitude': position.latitude,
+        'inTimeLongitude': position.longitude,
+        'inTimeImageUrl': imageUrl,
+        'inTimeImageCaptured': true,
       };
 
       await _apiService.checkIn(checkInData);
@@ -96,15 +167,35 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> with 
       if (mounted) setState(() => _isCheckingIn = false);
     }
   }
-
+  
+  // --- UPDATED: Now uses image capture and live location data ---
   Future<void> _handleCheckOut() async {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
-    
     setState(() => _isCheckingOut = true);
+
     try {
+      final position = await _getCurrentPosition();
+      if (position == null) {
+         if(mounted) setState(() => _isCheckingOut = false);
+        return;
+      }
+
+      final imageFile = await _captureImage();
+      if (imageFile == null) {
+        if(mounted) setState(() => _isCheckingOut = false);
+        return;
+      }
+      
+      scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Uploading image...')));
+      final imageUrl = await _apiService.uploadImageToR2(imageFile);
+      
       final checkOutData = {
         'userId': int.parse(widget.employee.id),
         'attendanceDate': DateTime.now().toIso8601String(),
+        'outTimeImageUrl': imageUrl,
+        'outTimeImageCaptured': true,
+        'outTimeLatitude': position.latitude,
+        'outTimeLongitude': position.longitude,
       };
       
       await _apiService.checkOut(checkOutData);
@@ -120,6 +211,7 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> with 
       if (mounted) setState(() => _isCheckingOut = false);
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -139,7 +231,6 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> with 
           child: ListView(
             padding: const EdgeInsets.all(16.0),
             children: [
-              // Greeting Card
               LiquidGlassCard(
                 child: Column(
                   children: [
@@ -162,8 +253,6 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> with 
                 ),
               ),
               const SizedBox(height: 16),
-
-              // Actions Card
               LiquidGlassCard(
                 child: Row(
                   children: [
@@ -186,8 +275,6 @@ class _EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> with 
                 ),
               ),
               const SizedBox(height: 24),
-
-              // PJP Card
               FutureBuilder<List<Pjp>>(
                 future: _pjpFuture,
                 builder: (context, snapshot) {

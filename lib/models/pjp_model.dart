@@ -1,5 +1,3 @@
-
-
 class Pjp {
   final String id;
   final int userId;
@@ -8,6 +6,7 @@ class Pjp {
   final String status;
   final String areaToBeVisited;
   final String? description;
+  final String? dealerName;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -18,41 +17,56 @@ class Pjp {
     required this.planDate,
     required this.status,
     required this.areaToBeVisited,
+    this.dealerName,
     this.description,
     required this.createdAt,
     required this.updatedAt,
   });
 
-  /// ✅ FINAL FIX: Reverted to camelCase to match the server's response.
+  /// ✅ Handles both camelCase and snake_case from server
   factory Pjp.fromJson(Map<String, dynamic> json) {
     return Pjp(
-      id: json['id'] ?? '',
+      id: json['id']?.toString() ?? '',
       userId: json['userId'] ?? 0,
       createdById: json['createdById'] ?? 0,
       planDate: DateTime.tryParse(json['planDate'] ?? '') ?? DateTime.now(),
       status: json['status'] ?? '',
       areaToBeVisited: json['areaToBeVisited'] ?? '',
+      dealerName: json['dealerName'] ?? json['dealer_name'],
       description: json['description'],
       createdAt: DateTime.tryParse(json['createdAt'] ?? '') ?? DateTime.now(),
       updatedAt: DateTime.tryParse(json['updatedAt'] ?? '') ?? DateTime.now(),
     );
   }
 
-  Pjp copyWith() {
+  /// ✅ Proper copyWith
+  Pjp copyWith({
+    String? id,
+    int? userId,
+    int? createdById,
+    DateTime? planDate,
+    String? status,
+    String? areaToBeVisited,
+    String? description,
+    String? dealerName,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) {
     return Pjp(
-      id: id,
-      userId: userId,
-      createdById: createdById,
-      planDate: planDate,
-      status: status,
-      areaToBeVisited: areaToBeVisited,
-      description: description,
-      createdAt: createdAt,
-      updatedAt: updatedAt,
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      createdById: createdById ?? this.createdById,
+      planDate: planDate ?? this.planDate,
+      status: status ?? this.status,
+      areaToBeVisited: areaToBeVisited ?? this.areaToBeVisited,
+      description: description ?? this.description,
+      dealerName: dealerName ?? this.dealerName,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
-  /// ✅ FINAL FIX: Reverted to camelCase to match the server's validation schema.
+  /// ✅ Matches server camelCase schema
   Map<String, dynamic> toJson() {
     return {
       'userId': userId,
@@ -61,6 +75,7 @@ class Pjp {
       'status': status,
       'areaToBeVisited': areaToBeVisited,
       'description': description,
+      'dealerName': dealerName,
     };
   }
 }

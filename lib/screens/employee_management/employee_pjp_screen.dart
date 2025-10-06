@@ -5,73 +5,46 @@ import 'package:assetarchiverflutter/api/api_service.dart';
 import 'package:assetarchiverflutter/models/pjp_model.dart';
 import 'package:assetarchiverflutter/models/dealer_model.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+import 'package:maplibre_gl/maplibre_gl.dart'; // <-- ADD THIS IMPORT
 
 class EmployeePJPScreen extends StatefulWidget {
   final Employee employee;
-  final Function(String) onStartJourney;
+  // --- MODIFIED: The callback now expects a LatLng object, not a String ---
+  final Function(LatLng destination) onStartJourney;
+  final VoidCallback onPjpCreated;
 
   const EmployeePJPScreen({
     super.key,
     required this.employee,
     required this.onStartJourney,
+    required this.onPjpCreated,
   });
 
   @override
-  State<EmployeePJPScreen> createState() => _EmployeePJPScreenState();
+  State<EmployeePJPScreen> createState() => EmployeePJPScreenState();
 }
 
-class _EmployeePJPScreenState extends State<EmployeePJPScreen> {
+class EmployeePJPScreenState extends State<EmployeePJPScreen> {
   final ApiService _apiService = ApiService();
   late Future<List<Pjp>> _pjpFuture;
 
   @override
   void initState() {
     super.initState();
-    // Initially fetch only 'pending' PJPs
-    _pjpFuture = _apiService.fetchPjpsForUser(int.parse(widget.employee.id), status: 'pending');
+    refreshPjpList();
   }
 
-  void _refreshPjpList() {
-    setState(() {
-      _pjpFuture = _apiService.fetchPjpsForUser(int.parse(widget.employee.id), status: 'pending');
-    });
-  }
-
-  // --- NEW: This function handles starting the journey and updating the API ---
-  Future<void> _startJourneyForPjp(Pjp pjp) async {
-    // Store context to use across async gaps
-    final navigator = Navigator.of(context);
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
-
-    try {
-      // Show a loading dialog
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (BuildContext context) {
-          return const Center(child: CircularProgressIndicator());
-        },
-      );
-
-      // Call the API to update the PJP status to "started"
-      await _apiService.updatePjp(pjp.id, {'status': 'started'});
-
-      // Hide the loading dialog
-      navigator.pop();
-
-      // Trigger navigation to the journey screen
-      widget.onStartJourney(pjp.areaToBeVisited);
-
-      // Refresh the PJP list to remove the started one from view
-      _refreshPjpList();
-
-    } catch (e) {
-      // Hide the loading dialog and show an error
-      navigator.pop();
-      scaffoldMessenger.showSnackBar(
-        SnackBar(content: Text('Failed to start journey: $e'), backgroundColor: Colors.red),
-      );
+  void refreshPjpList() {
+    if (mounted) {
+      setState(() {
+        _pjpFuture = _apiService.fetchPjpsForUser(int.parse(widget.employee.id), status: 'pending');
+      });
     }
+  }
+
+  void _handlePjpCreation() {
+    refreshPjpList();
+    widget.onPjpCreated();
   }
 
   void _showAddPjpForm() {
@@ -81,9 +54,46 @@ class _EmployeePJPScreenState extends State<EmployeePJPScreen> {
       backgroundColor: Colors.transparent,
       builder: (_) => _AddPjpForm(
         employee: widget.employee,
-        onPjpCreated: _refreshPjpList,
+        onPjpCreated: _handlePjpCreation,
       ),
     );
+  }
+
+  // --- MODIFIED: This function now parses coordinates from the 'areaToBeVisited' string ---
+  Future<void> _startJourneyForPjp(Pjp pjp) async {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+    try {
+      // 1. Parse the coordinate string (e.g., "26.1445,91.7362")
+      final parts = pjp.areaToBeVisited.split(',');
+      if (parts.length != 2) throw const FormatException('Invalid coordinate format in PJP.');
+      
+      final lat = double.tryParse(parts[0]);
+      final lon = double.tryParse(parts[1]);
+
+      if (lat == null || lon == null) throw const FormatException('Could not parse numbers from PJP coordinates.');
+
+      // 2. Update the PJP status on the server
+      await _apiService.updatePjp(pjp.id, {'status': 'started'});
+      scaffoldMessenger.showSnackBar(const SnackBar(
+        content: Text('Journey Started!'),
+        backgroundColor: Colors.green,
+      ));
+      
+      refreshPjpList();
+      widget.onPjpCreated(); 
+      
+      // 3. Pass the parsed LatLng object to the callback
+      final destination = LatLng(lat, lon);
+      widget.onStartJourney(destination);
+
+    } catch (e) {
+      debugPrint("Failed to start journey: $e");
+      scaffoldMessenger.showSnackBar(SnackBar(
+        content: Text('Failed to start journey: PJP has invalid location data.'),
+        backgroundColor: Colors.red,
+      ));
+    }
   }
 
   @override
@@ -110,7 +120,7 @@ class _EmployeePJPScreenState extends State<EmployeePJPScreen> {
                   return Center(child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.yellow)));
                 }
                 if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return const Center(child: Text('No Pending PJPs found.', style: TextStyle(color: Colors.white70)));
+                  return const Center(child: Text('No PJPs to visit.', style: TextStyle(color: Colors.white70)));
                 }
                 final pjpList = snapshot.data!;
                 return ListView.builder(
@@ -118,23 +128,23 @@ class _EmployeePJPScreenState extends State<EmployeePJPScreen> {
                   itemCount: pjpList.length,
                   itemBuilder: (context, index) {
                     final pjp = pjpList[index];
-                    return Slidable(
-                      key: ValueKey(pjp.id),
-                      startActionPane: ActionPane(
-                        motion: const StretchMotion(),
-                        children: [
-                          SlidableAction(
-                            onPressed: (_) => _startJourneyForPjp(pjp),
-                            backgroundColor: Colors.green,
-                            foregroundColor: Colors.white,
-                            icon: Icons.route,
-                            label: 'Start Journey',
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ],
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                      child: Slidable(
+                        key: ValueKey(pjp.id),
+                        startActionPane: ActionPane(
+                          motion: const StretchMotion(),
+                          children: [
+                            SlidableAction(
+                              onPressed: (_) => _startJourneyForPjp(pjp),
+                              backgroundColor: Theme.of(context).colorScheme.primary,
+                              foregroundColor: Colors.white,
+                              icon: Icons.route,
+                              label: 'Start Journey',
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ],
+                        ),
                         child: _PjpCard(pjp: pjp),
                       ),
                     );
@@ -164,6 +174,10 @@ class _PjpCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    
+    // 👇 FIX: Use dealerName and only fallback to areaToBeVisited if the name is missing.
+    // The coordinate parsing logic is REMOVED.
+    String displayName = pjp.dealerName ?? pjp.areaToBeVisited; 
 
     return LiquidGlassCard(
       child: Row(
@@ -171,8 +185,8 @@ class _PjpCard extends StatelessWidget {
         children: [
           Expanded(
             child: Text(
-              pjp.areaToBeVisited,
-              style: textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold)
+              displayName, // This now correctly displays the Dealer Name
+              style: textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
             ),
           ),
           const SizedBox(width: 16),
@@ -213,18 +227,31 @@ class _AddPjpFormState extends State<_AddPjpForm> {
     super.dispose();
   }
 
+  // --- MODIFIED: This function now stores coordinates in 'areaToBeVisited' ---
   Future<void> _submitForm() async {
     if (!_formKey.currentState!.validate() || _selectedDealer == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select a dealer.'), backgroundColor: Colors.orange));
       return;
     }
+    
+    final dealer = _selectedDealer!;
+
+    // Check if the selected dealer has location data
+    if (dealer.latitude == null || dealer.longitude == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('The selected dealer does not have location data saved.'), 
+        backgroundColor: Colors.orange,
+      ));
+      return;
+    }
+
     setState(() => _isSubmitting = true);
     final navigator = Navigator.of(context);
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     
     try {
-      final dealer = _selectedDealer!;
-      final String visitDescription = '${dealer.name}, ${dealer.address}';
+      // Format the coordinates into a string: "latitude,longitude"
+      final String visitLocation = '${dealer.latitude},${dealer.longitude}';
 
       final newPjp = Pjp(
         id: '',
@@ -232,8 +259,9 @@ class _AddPjpFormState extends State<_AddPjpForm> {
         userId: int.parse(widget.employee.id),
         createdById: int.parse(widget.employee.id),
         status: 'pending',
-        areaToBeVisited: visitDescription, 
+        areaToBeVisited: visitLocation, // Use the coordinate string here
         description: _descriptionController.text,
+        dealerName: dealer.name,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
       );
@@ -246,7 +274,6 @@ class _AddPjpFormState extends State<_AddPjpForm> {
     } catch (e) {
       debugPrint('--- FAILED TO CREATE PJP ---');
       debugPrint('Error: $e');
-
       scaffoldMessenger.showSnackBar(SnackBar(content: Text('Failed to create PJP: $e'), backgroundColor: Colors.red));
     } finally {
       if(mounted) setState(() => _isSubmitting = false);
@@ -315,4 +342,3 @@ class _AddPjpFormState extends State<_AddPjpForm> {
     );
   }
 }
-

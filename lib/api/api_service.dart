@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'dart:developer' as dev;
+import 'dart:io';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 
 // Import all model files
@@ -10,11 +12,13 @@ import '../models/leave_application_model.dart';
 import '../models/attendance_model.dart';
 import '../models/daily_visit_report_model.dart';
 import '../models/technical_visit_report_model.dart';
+// 👇 NEW IMPORT for the GeoTracking model
+import '../models/geotracking_data_model.dart';
 
 class ApiService {
   static const String _baseUrl = 'https://myserverbymycoco.onrender.com';
 
-  // --- GENERIC HELPERS ---
+  // --- GENERIC HELPERS (Unchanged) ...
 
   Future<T> _get<T>(String endpoint, T Function(dynamic json) fromJson) async {
     final url = Uri.parse('$_baseUrl/api/$endpoint');
@@ -56,7 +60,8 @@ class ApiService {
           throw Exception(jsonData['error'] ?? 'API returned success: false');
         }
       } else {
-        throw Exception(jsonData['error'] ?? 'Failed to create item. Status: ${response.statusCode}');
+        final errorDetails = jsonData['details'] != null ? jsonEncode(jsonData['details']) : 'No details from server.';
+        throw Exception('${jsonData['error'] ?? 'Failed to create item'}. Details: $errorDetails');
       }
     } catch (e) {
       dev.log('API Error on POST $endpoint', error: e, name: 'ApiService');
@@ -64,7 +69,6 @@ class ApiService {
     }
   }
   
-  // --- NEW: GENERIC PATCH HELPER ---
   Future<T> _patch<T>(String endpoint, Map<String, dynamic> body, T Function(dynamic json) fromJson) async {
     final url = Uri.parse('$_baseUrl/api/$endpoint');
     dev.log('PATCH: $url', name: 'ApiService');
@@ -106,8 +110,109 @@ class ApiService {
     }
   }
 
-  // --- GET METHODS ---
+  Future<String> uploadImageToR2(File imageFile) async {
+    final url = Uri.parse('$_baseUrl/api/r2/upload-direct');
+    dev.log('POST (Multipart): $url', name: 'ApiService');
+    try {
+      final request = http.MultipartRequest('POST', url);
+      request.files.add(await http.MultipartFile.fromPath(
+        'file',
+        imageFile.path,
+      ));
 
+      final streamedResponse = await request.send().timeout(const Duration(seconds: 90));
+      final response = await http.Response.fromStream(streamedResponse);
+      final jsonData = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        if (jsonData['success'] == true && jsonData['publicUrl'] != null) {
+          return jsonData['publicUrl'];
+        } else {
+          throw Exception(jsonData['error'] ?? 'Image upload API returned success: false');
+        }
+      } else {
+        throw Exception(jsonData['error'] ?? 'Failed to upload image. Status: ${response.statusCode}');
+      }
+    } catch (e) {
+      dev.log('API Error on POST uploadImageToR2', error: e, name: 'ApiService');
+      rethrow;
+    }
+  }
+
+  // --- NEW GEO-TRACKING METHOD (POST) ---
+  
+  Future<void> sendGeoTrackingPoint(GeoTrackingPoint point) async {
+    final url = Uri.parse('$_baseUrl/api/geotracking');
+    final body = point.toJson();
+    
+    // Clean payload by removing null/undefined values before encoding
+    body.removeWhere((key, value) => value == null);
+    
+    dev.log('POST GeoTracking: $url', name: 'ApiService');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json; charset=UTF-8'},
+        body: jsonEncode(body),
+      ).timeout(const Duration(seconds: 10)); // Short timeout for location updates
+
+      if (response.statusCode == 201) {
+        // debugPrint('[GeoTracking] Location update successful.');
+        return;
+      } else {
+        final jsonData = jsonDecode(response.body);
+        // Log the failure details but don't rethrow, as tracking should continue
+        dev.log('GeoTracking failed: ${response.statusCode}', error: jsonData['error'] ?? response.body, name: 'ApiService');
+        return;
+      }
+    } catch (e) {
+      dev.log('GeoTracking API Error (No connectivity?): $e', name: 'ApiService');
+      return;
+    }
+  }
+
+
+  // --- RADAR.IO REVERSE GEOCODING METHOD (Unchanged) ---
+  Future<Map<String, String>> reverseGeocodeWithRadar({required double latitude, required double longitude}) async {
+    final radarApiKey = dotenv.env['RADAR_API_KEY'];
+    if (radarApiKey == null) {
+      throw Exception('RADAR_API_KEY not found in .env file');
+    }
+
+    final url = Uri.https('api.radar.io', '/v1/geocode/reverse', {
+      'coordinates': '$latitude,$longitude',
+    });
+
+    dev.log('GET: $url', name: 'RadarApiService');
+
+    try {
+      final response = await http.get(url, headers: {'Authorization': radarApiKey}).timeout(const Duration(seconds: 15));
+      final jsonData = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        if (jsonData['addresses'] != null && (jsonData['addresses'] as List).isNotEmpty) {
+          final firstResult = jsonData['addresses'][0];
+          return {
+            'address': firstResult['formattedAddress'] ?? 'Unknown Address',
+            'region': firstResult['city'] ?? 'Unknown Region', // Using city as region
+            'area': firstResult['neighborhood'] ?? firstResult['county'] ?? 'Unknown Area', // Using neighborhood or county as area
+            'pinCode': firstResult['postalCode'] ?? '',
+          };
+        } else {
+          throw Exception('Could not determine address from coordinates.');
+        }
+      } else {
+        throw Exception(jsonData['meta']?['message'] ?? 'Failed to reverse geocode.');
+      }
+    } catch (e) {
+      dev.log('Radar API Error on reverseGeocodeWithRadar', error: e, name: 'RadarApiService');
+      rethrow;
+    }
+  }
+
+  // --- DEALER METHODS (createDealer is modified) ---
+  
   Future<List<Dealer>> fetchDealers({String? region, String? area, String? type, int? userId}) async {
     final queryParams = <String, String>{
       if (region != null) 'region': region,
@@ -122,6 +227,22 @@ class ApiService {
   Future<Dealer> fetchDealerById(String dealerId) {
     return _get('dealers/$dealerId', (json) => Dealer.fromJson(json));
   }
+
+  Future<Dealer> createDealer(Dealer dealer, {required double latitude, required double longitude}) async {
+    final body = dealer.toJson();
+    body['latitude'] = latitude.toString();
+    body['longitude'] = longitude.toString();
+    return _post('dealers', body, (json) => Dealer.fromJson(json));
+  }
+  
+  Future<Dealer> updateDealer(String dealerId, Map<String, dynamic> data) async {
+    return _patch('dealers/$dealerId', data, (json) => Dealer.fromJson(json));
+  }
+
+  Future<void> deleteDealer(String dealerId) => _delete('dealers/$dealerId');
+
+
+  // --- OTHER METHODS (Unchanged) ... ---
   
   Future<List<Pjp>> fetchPjpsForUser(int userId, {String? startDate, String? endDate, String? status}) async {
     final queryParams = <String, String>{
@@ -132,6 +253,17 @@ class ApiService {
     final endpoint = Uri(path: 'pjp/user/$userId', queryParameters: queryParams.isEmpty ? null : queryParams).toString();
     return _get(endpoint, (json) => (json as List).map((item) => Pjp.fromJson(item)).toList());
   }
+  
+  Future<Pjp> createPjp(Pjp pjp) async {
+    return _post('pjp', pjp.toJson(), (json) => Pjp.fromJson(json));
+  }
+
+  Future<Pjp> updatePjp(String pjpId, Map<String, dynamic> data) async {
+    return _patch('pjp/$pjpId', data, (json) => Pjp.fromJson(json));
+  }
+  
+  Future<void> deletePjp(String pjpId) => _delete('pjp/$pjpId');
+
   
   Future<List<DailyTask>> fetchDailyTasksForUser(int userId, {String? startDate, String? endDate, String? status}) async {
     final queryParams = <String, String>{
@@ -188,14 +320,6 @@ class ApiService {
     return _get(endpoint, (json) => (json as List).map((item) => TechnicalVisitReport.fromJson(item)).toList());
   }
 
-  // --- POST METHODS ---
-  
-  Future<Dealer> createDealer(Dealer dealer, {required double latitude, required double longitude}) async {
-    final body = dealer.toJson();
-    body['latitude'] = latitude;
-    body['longitude'] = longitude;
-    return _post('dealers', body, (json) => Dealer.fromJson(json));
-  }
   
   Future<Attendance> checkIn(Map<String, dynamic> checkInData) async {
     return _post('attendance/check-in', checkInData, (json) => Attendance.fromJson(json));
@@ -203,10 +327,6 @@ class ApiService {
   
   Future<Attendance> checkOut(Map<String, dynamic> checkOutData) async {
     return _post('attendance/check-out', checkOutData, (json) => Attendance.fromJson(json));
-  }
-
-  Future<Pjp> createPjp(Pjp pjp) async {
-    return _post('pjp', pjp.toJson(), (json) => Pjp.fromJson(json));
   }
 
   Future<DailyTask> createDailyTask(DailyTask task) async {
@@ -225,18 +345,6 @@ class ApiService {
     return _post('leave-applications', leaveApp.toJson(), (json) => LeaveApplication.fromJson(json));
   }
   
-  // --- PATCH METHODS ---
-  
-  // --- NEW: This is the missing function ---
-  Future<Pjp> updatePjp(String pjpId, Map<String, dynamic> data) async {
-    return _patch('pjp/$pjpId', data, (json) => Pjp.fromJson(json));
-  }
-
-
-  // --- DELETE METHODS ---
-  
-  Future<void> deleteDealer(String dealerId) => _delete('dealers/$dealerId');
-  Future<void> deletePjp(String pjpId) => _delete('pjp/$pjpId');
   Future<void> deleteDailyTask(String taskId) => _delete('daily-tasks/$taskId');
   Future<void> deleteDvr(String dvrId) => _delete('daily-visit-reports/$dvrId');
   Future<void> deleteTvr(String tvrId) => _delete('technical-visit-reports/$tvrId');

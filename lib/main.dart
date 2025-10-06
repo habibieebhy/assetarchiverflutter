@@ -1,15 +1,23 @@
-// Import the login screen, which will be the first screen to use our theme.
+// main.dart
+
 import 'package:assetarchiverflutter/screens/auth/login_screen.dart';
-// UPDATED: Import the new NavScreen which now acts as our home.
 import 'package:assetarchiverflutter/screens/nav_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-// ADDED: Import the Employee model to recognize its type for routing.
 import 'package:assetarchiverflutter/models/employee_model.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // <-- ADD THIS IMPORT
 
+// --- MODIFIED: The main function must be async to use 'await' ---
+Future<void> main() async {
+  // --- FIX #1: This line is REQUIRED. It initializes the plugin engine. ---
+  // This will solve the 'NotInitializedError' by making sure the native
+  // side of your app is ready before any Dart code runs.
+  WidgetsFlutterBinding.ensureInitialized();
 
-// The app's entry point.
-void main() {
+  // --- FIX #2: Load your environment variables here, once, at startup. ---
+  await dotenv.load(fileName: ".env");
+
+  // This line remains the same.
   runApp(const MyApp());
 }
 
@@ -25,27 +33,19 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Modern App',
-
-      // --- THE GLASS-READY "MATERIAL SPECIFICATION SHEET" ---
       theme: ThemeData(
-        // 1. THE "GLASS": A dark theme lets the background colors shine through.
         colorScheme: ColorScheme.fromSeed(
           seedColor: modernBlue,
           brightness: Brightness.dark,
         ),
-
-        // 2. THE "PRINTING": Roboto is the standard Android font, clean and readable.
         textTheme: GoogleFonts.robotoTextTheme(ThemeData.dark().textTheme),
-
-        // 3. THE "VIRTUAL COMPONENTS": Semi-transparent styles for text fields.
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
-          // UPDATED: Replaced deprecated withOpacity with withAlpha for better precision.
-          fillColor: Colors.white.withAlpha(26), // Semi-transparent white
+          fillColor: Colors.white.withAlpha(26),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16.0),
             borderSide: BorderSide(
-              color: Colors.white.withAlpha(51), // Subtle edge highlight
+              color: Colors.white.withAlpha(51),
             ),
           ),
           enabledBorder: OutlineInputBorder(
@@ -56,8 +56,6 @@ class MyApp extends StatelessWidget {
           ),
           prefixIconColor: Colors.white.withAlpha(179),
         ),
-
-        // 4. THE "SOLID BUTTONS": Opaque and vibrant to stand out.
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
             backgroundColor: modernBlue,
@@ -72,34 +70,23 @@ class MyApp extends StatelessWidget {
             ),
           ),
         ),
-
         useMaterial3: true,
       ),
-
-      // --- NAVIGATION ---
       initialRoute: '/login',
-      // UPDATED: The routes map is now used only for routes that don't need arguments.
       routes: {
         '/login': (context) => const LoginScreen(),
       },
-      // UPDATED: onGenerateRoute handles dynamic routing for screens that require arguments.
       onGenerateRoute: (settings) {
-        // Handle the '/home' route.
         if (settings.name == '/home') {
-          // Extract the Employee object passed during navigation.
           final employee = settings.arguments as Employee;
-
-          // FIXED: This now correctly returns your NavScreen widget.
           return MaterialPageRoute(
             builder: (context) {
               return NavScreen(employee: employee);
             },
           );
         }
-        // If the route name is not handled, return null.
         return null;
       },
     );
   }
 }
-
