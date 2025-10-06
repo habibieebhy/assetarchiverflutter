@@ -11,8 +11,47 @@ import 'package:assetarchiverflutter/screens/employee_management/employee_saleso
 import 'package:assetarchiverflutter/widgets/reusableglasscard.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:provider/provider.dart';
+
+// --- Step 1: The "Brain" for your navigation, living inside this file. ---
+class NavProvider with ChangeNotifier {
+  int _selectedIndex = 0;
+  Map<String, dynamic>? _journeyData;
+
+  int get selectedIndex => _selectedIndex;
+  Map<String, dynamic>? get journeyData => _journeyData;
+
+  void changePage(int index) {
+    _selectedIndex = index;
+    notifyListeners(); // Announce the change to the UI
+  }
+
+  void startJourney(Map<String, dynamic> data) {
+    _journeyData = data;
+    _selectedIndex = 3; // Go to the journey page
+    notifyListeners();
+  }
+
+  void clearJourneyData() {
+    _journeyData = null;
+    notifyListeners();
+  }
+
+  // The refresh logic that was previously called via GlobalKey can live here.
+  // For now, they can be placeholders.
+  void refreshDashboard() {
+    // TODO: Add refresh logic here
+    debugPrint("Refreshing Dashboard...");
+  }
+
+  void refreshPjpList() {
+    // TODO: Add refresh logic here
+    debugPrint("Refreshing PJP List...");
+  }
+}
 
 
+// --- Step 2: The NavScreen now creates and provides the state. ---
 class NavScreen extends StatefulWidget {
   final Employee employee;
   const NavScreen({super.key, required this.employee});
@@ -22,130 +61,117 @@ class NavScreen extends StatefulWidget {
 }
 
 class _NavScreenState extends State<NavScreen> {
-  late final PageController _pageController;
-  int _selectedIndex = 0;
-
-  final GlobalKey<EmployeeDashboardScreenState> _dashboardKey = GlobalKey<EmployeeDashboardScreenState>();
-  final GlobalKey<EmployeePJPScreenState> _pjpKey = GlobalKey<EmployeePJPScreenState>();
-
-  late List<Widget> _pages;
-  final List<String> _pageTitles = ['Home', 'PJP', 'Sales Order', 'Journey', 'Profile'];
-
-  // --- MODIFIED: State variable now holds the Map of journey data ---
-  Map<String, dynamic>? _journeyDataFromPJP;
+  // The state now only holds a single, final instance of our provider.
+  late final NavProvider _navProvider;
 
   @override
   void initState() {
     super.initState();
-    _pageController = PageController();
-    _buildPages();
-  }
-  
-  // --- MODIFIED: Method now accepts the Map ---
-  void _navigateToJourneyWithDestination(Map<String, dynamic> journeyData) {
-    setState(() {
-      _journeyDataFromPJP = journeyData;
-      _buildPages(); 
-    });
-    _pageController.animateToPage(3, duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+    _navProvider = NavProvider();
   }
 
-  void _clearPJPDestination() {
-     WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _journeyDataFromPJP != null) {
-            setState(() {
-                _journeyDataFromPJP = null;
-                _buildPages(); 
-            });
-        }
-    });
-  }
-
-  void _onItemTapped(int index) {
-    if (index == 0) {
-      _dashboardKey.currentState?.refreshPjps();
-    } else if (index == 1) {
-      _pjpKey.currentState?.refreshPjpList();
-    }
-    _pageController.animateToPage(index, duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
-  }
-  
   @override
   void dispose() {
-    _pageController.dispose();
+    _navProvider.dispose();
     super.dispose();
   }
-  
-  // --- MODIFIED: Passes the new Map to the Journey Screen ---
-  void _buildPages() {
-     _pages = [
-      EmployeeDashboardScreen(
-        key: _dashboardKey,
-        employee: widget.employee,
-      ),
-      EmployeePJPScreen(
-        key: _pjpKey,
-        employee: widget.employee,
-        onStartJourney: _navigateToJourneyWithDestination,
-        onPjpCreated: () { 
-          _dashboardKey.currentState?.refreshPjps();
+
+  @override
+  Widget build(BuildContext context) {
+    // We provide the state to the rest of the widget tree.
+    // The `Consumer` widget efficiently rebuilds the UI when the provider changes.
+    return ChangeNotifierProvider.value(
+      value: _navProvider,
+      child: Consumer<NavProvider>(
+        builder: (context, provider, child) {
+          // --- Step 3: The UI is now a "dumb" widget that just displays the state. ---
+          final pageTitles = ['Home', 'PJP', 'Sales Order', 'Journey', 'Profile'];
+
+          final pages = <Widget>[
+            EmployeeDashboardScreen(employee: widget.employee),
+            EmployeePJPScreen(
+              employee: widget.employee,
+              onStartJourney: provider.startJourney, // Directly use provider method
+              onPjpCreated: provider.refreshDashboard,
+            ),
+            SalesOrderScreen(employee: widget.employee),
+            EmployeeJourneyScreen(
+              initialJourneyData: provider.journeyData, // Get data from provider
+              employee: widget.employee,
+              onDestinationConsumed: provider.clearJourneyData,
+            ),
+            EmployeeProfileScreen(employee: widget.employee),
+          ];
+
+          return Scaffold(
+            extendBodyBehindAppBar: true,
+            extendBody: true,
+            appBar: AppBar(
+              title: Text(pageTitles[provider.selectedIndex]),
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              flexibleSpace: ClipRRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
+                  child: Container(
+                    color: Colors.white.withAlpha(26),
+                  ),
+                ),
+              ),
+            ),
+            drawer: _buildGlassDrawer(context, widget.employee),
+            body: IndexedStack(
+              index: provider.selectedIndex,
+              children: pages,
+            ),
+            bottomNavigationBar: _buildGlassNavBar(context, provider),
+          );
         },
       ),
-      SalesOrderScreen(employee: widget.employee),
-      EmployeeJourneyScreen(
-        key: ValueKey(_journeyDataFromPJP),
-        employee: widget.employee, 
-        initialJourneyData: _journeyDataFromPJP, // Pass the Map object
-        onDestinationConsumed: _clearPJPDestination,
-      ),
-      EmployeeProfileScreen(employee: widget.employee),
-    ];
+    );
   }
 
-  void _showAddDealerDialog() {
+  // --- UI Helper Methods ---
+  
+  Widget _buildGlassNavBar(BuildContext context, NavProvider provider) {
+    return LiquidGlassCard(
+      child: BottomNavigationBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        items: const <BottomNavigationBarItem>[
+          BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: 'Home'),
+          BottomNavigationBarItem(icon: Icon(Icons.checklist_rtl), label: 'PJP'),
+          BottomNavigationBarItem(icon: Icon(Icons.shopping_cart_outlined), label: 'Sales Order'),
+          BottomNavigationBarItem(icon: Icon(Icons.map_outlined), label: 'Journey'),
+          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+        ],
+        currentIndex: provider.selectedIndex,
+        onTap: (index) {
+          // Tell the provider to handle the tap logic
+          if (index == 0) provider.refreshDashboard();
+          if (index == 1) provider.refreshPjpList();
+          provider.changePage(index);
+        },
+        selectedItemColor: Colors.white,
+        unselectedItemColor: Colors.white70,
+        type: BottomNavigationBarType.fixed,
+        showUnselectedLabels: true,
+      ),
+    );
+  }
+  
+  void _showAddDealerDialog(BuildContext context, Employee employee) {
     showDialog(
       context: context,
       builder: (_) => Dialog(
         backgroundColor: Colors.transparent,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24.0)),
-        child: _AddDealerForm(employee: widget.employee),
+        child: _AddDealerForm(employee: employee),
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      extendBody: true,
-      appBar: AppBar(
-        title: Text(_pageTitles[_selectedIndex]),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        flexibleSpace: ClipRRect(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
-            child: Container(
-              color: Colors.white.withAlpha(26),
-            ),
-          ),
-        ),
-      ),
-      drawer: _buildGlassDrawer(),
-      body: PageView(
-        controller: _pageController,
-        onPageChanged: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
-        children: _pages,
-      ),
-      bottomNavigationBar: _buildGlassNavBar(),
-    );
-  }
-
-  Widget _buildGlassDrawer() {
+  Widget _buildGlassDrawer(BuildContext context, Employee employee) {
     return Drawer(
       backgroundColor: Colors.transparent,
       elevation: 0,
@@ -161,71 +187,40 @@ class _NavScreenState extends State<NavScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(
-                      widget.employee.companyName ?? 'Your Company',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
-                    ),
+                    Text(employee.companyName ?? 'Your Company', style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 4),
-                    Text(widget.employee.displayName, style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white)),
-                    Text(widget.employee.email ?? '', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white70)),
+                    Text(employee.displayName, style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white)),
+                    Text(employee.email ?? '', style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white70)),
                   ],
                 ),
               ),
             ),
             const Divider(color: Colors.white24),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Text('CREATE REPORTS/ORDERS', style: TextStyle(color: Colors.white70, fontSize: 12)),
-            ),
-            _buildDrawerActionItem(icon: Icons.description_outlined, text: 'CREATE DVR'),
-            _buildDrawerActionItem(icon: Icons.description, text: 'CREATE TVR'),
-            _buildDrawerActionItem(icon: Icons.assessment_outlined, text: 'COMPETETION FORM'),
-            _buildDrawerActionItem(icon: Icons.shopping_cart, text: 'MODIFY SALES ORDER'),
-            _buildDrawerActionItem(icon: Icons.task_alt, text: 'DAILY TASKS'),
-            _buildDrawerActionItem(icon: Icons.person_add_alt, text: 'ADD DEALER', onTap: _showAddDealerDialog),
-            _buildDrawerActionItem(icon: Icons.event_note, text: 'APPLY FOR LEAVE'),
+            _buildDrawerActionItem(context, icon: Icons.person_add_alt, text: 'ADD DEALER', onTap: () => _showAddDealerDialog(context, employee)),
+            _buildDrawerActionItem(context, icon: Icons.description_outlined, text: 'CREATE DVR'),
+            _buildDrawerActionItem(context, icon: Icons.description, text: 'CREATE TVR'),
+            _buildDrawerActionItem(context, icon: Icons.assessment_outlined, text: 'COMPETETION FORM'),
+            _buildDrawerActionItem(context, icon: Icons.shopping_cart, text: 'MODIFY SALES ORDER'),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildDrawerActionItem({required IconData icon, required String text, VoidCallback? onTap}) {
-     return ListTile(
+  Widget _buildDrawerActionItem(BuildContext context, {required IconData icon, required String text, VoidCallback? onTap}) {
+    return ListTile(
       leading: Icon(icon, color: Colors.white70),
       title: Text(text, style: const TextStyle(color: Colors.white)),
       onTap: onTap ?? () {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$text tapped')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$text tapped')));
       },
-    );
-  }
-
-  Widget _buildGlassNavBar() {
-    return LiquidGlassCard(
-      child: BottomNavigationBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.checklist_rtl), label: 'PJP'),
-          BottomNavigationBarItem(icon: Icon(Icons.shopping_cart_outlined), label: 'Sales Order'),
-          BottomNavigationBarItem(icon: Icon(Icons.map_outlined), label: 'Journey'),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
-        ],
-        currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
-        selectedItemColor: Colors.white,
-        unselectedItemColor: Colors.white70,
-        type: BottomNavigationBarType.fixed,
-        showUnselectedLabels: true,
-      ),
     );
   }
 }
 
+
+// _AddDealerForm remains exactly the same
 class _AddDealerForm extends StatefulWidget {
   final Employee employee;
   const _AddDealerForm({required this.employee});

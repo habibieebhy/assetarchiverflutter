@@ -26,6 +26,7 @@ dependencies:
   flutter_radar: ^3.12.4
   flutter_slidable: ^3.1.0
   image_picker: ^1.1.2
+  provider: ^6.1.5
 
 
 dev_dependencies:
