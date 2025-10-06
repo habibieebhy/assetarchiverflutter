@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:developer' as dev;
+import 'dart:developer' as dev; // <-- THIS LINE WAS MISSING
 import 'dart:io';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
@@ -12,21 +12,18 @@ import '../models/leave_application_model.dart';
 import '../models/attendance_model.dart';
 import '../models/daily_visit_report_model.dart';
 import '../models/technical_visit_report_model.dart';
-// 👇 NEW IMPORT for the GeoTracking model
 import '../models/geotracking_data_model.dart';
 
 class ApiService {
   static const String _baseUrl = 'https://myserverbymycoco.onrender.com';
 
   // --- GENERIC HELPERS (Unchanged) ...
-
   Future<T> _get<T>(String endpoint, T Function(dynamic json) fromJson) async {
     final url = Uri.parse('$_baseUrl/api/$endpoint');
     dev.log('GET: $url', name: 'ApiService');
     try {
       final response = await http.get(url).timeout(const Duration(seconds: 45));
       final jsonData = jsonDecode(response.body);
-
       if (response.statusCode == 200) {
         if (jsonData['success'] == true && jsonData['data'] != null) {
           return fromJson(jsonData['data']);
@@ -51,7 +48,6 @@ class ApiService {
         headers: {'Content-Type': 'application/json; charset=UTF-8'},
         body: jsonEncode(body),
       ).timeout(const Duration(seconds: 45));
-      
       final jsonData = jsonDecode(response.body);
       if (response.statusCode == 201 || response.statusCode == 200) {
         if (jsonData['success'] == true && jsonData['data'] != null) {
@@ -78,7 +74,6 @@ class ApiService {
         headers: {'Content-Type': 'application/json; charset=UTF-8'},
         body: jsonEncode(body),
       ).timeout(const Duration(seconds: 45));
-      
       final jsonData = jsonDecode(response.body);
       if (response.statusCode == 200) {
         if (jsonData['success'] == true && jsonData['data'] != null) {
@@ -115,15 +110,10 @@ class ApiService {
     dev.log('POST (Multipart): $url', name: 'ApiService');
     try {
       final request = http.MultipartRequest('POST', url);
-      request.files.add(await http.MultipartFile.fromPath(
-        'file',
-        imageFile.path,
-      ));
-
+      request.files.add(await http.MultipartFile.fromPath('file', imageFile.path));
       final streamedResponse = await request.send().timeout(const Duration(seconds: 90));
       final response = await http.Response.fromStream(streamedResponse);
       final jsonData = jsonDecode(response.body);
-
       if (response.statusCode == 200) {
         if (jsonData['success'] == true && jsonData['publicUrl'] != null) {
           return jsonData['publicUrl'];
@@ -138,65 +128,43 @@ class ApiService {
       rethrow;
     }
   }
-
-  // --- NEW GEO-TRACKING METHOD (POST) ---
   
+  // --- NEW: GEO-TRACKING METHOD (POST) ---
   Future<void> sendGeoTrackingPoint(GeoTrackingPoint point) async {
     final url = Uri.parse('$_baseUrl/api/geotracking');
     final body = point.toJson();
-    
-    // Clean payload by removing null/undefined values before encoding
     body.removeWhere((key, value) => value == null);
-    
     dev.log('POST GeoTracking: $url', name: 'ApiService');
-
     try {
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json; charset=UTF-8'},
         body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 10)); // Short timeout for location updates
-
-      if (response.statusCode == 201) {
-        // debugPrint('[GeoTracking] Location update successful.');
-        return;
-      } else {
+      ).timeout(const Duration(seconds: 10));
+      if (response.statusCode != 201) {
         final jsonData = jsonDecode(response.body);
-        // Log the failure details but don't rethrow, as tracking should continue
         dev.log('GeoTracking failed: ${response.statusCode}', error: jsonData['error'] ?? response.body, name: 'ApiService');
-        return;
       }
     } catch (e) {
       dev.log('GeoTracking API Error (No connectivity?): $e', name: 'ApiService');
-      return;
     }
   }
 
-
-  // --- RADAR.IO REVERSE GEOCODING METHOD (Unchanged) ---
   Future<Map<String, String>> reverseGeocodeWithRadar({required double latitude, required double longitude}) async {
     final radarApiKey = dotenv.env['RADAR_API_KEY'];
-    if (radarApiKey == null) {
-      throw Exception('RADAR_API_KEY not found in .env file');
-    }
-
-    final url = Uri.https('api.radar.io', '/v1/geocode/reverse', {
-      'coordinates': '$latitude,$longitude',
-    });
-
+    if (radarApiKey == null) throw Exception('RADAR_API_KEY not found in .env file');
+    final url = Uri.https('api.radar.io', '/v1/geocode/reverse', {'coordinates': '$latitude,$longitude'});
     dev.log('GET: $url', name: 'RadarApiService');
-
     try {
       final response = await http.get(url, headers: {'Authorization': radarApiKey}).timeout(const Duration(seconds: 15));
       final jsonData = jsonDecode(response.body);
-
       if (response.statusCode == 200) {
         if (jsonData['addresses'] != null && (jsonData['addresses'] as List).isNotEmpty) {
           final firstResult = jsonData['addresses'][0];
           return {
             'address': firstResult['formattedAddress'] ?? 'Unknown Address',
-            'region': firstResult['city'] ?? 'Unknown Region', // Using city as region
-            'area': firstResult['neighborhood'] ?? firstResult['county'] ?? 'Unknown Area', // Using neighborhood or county as area
+            'region': firstResult['city'] ?? 'Unknown Region',
+            'area': firstResult['neighborhood'] ?? firstResult['county'] ?? 'Unknown Area',
             'pinCode': firstResult['postalCode'] ?? '',
           };
         } else {
@@ -211,8 +179,7 @@ class ApiService {
     }
   }
 
-  // --- DEALER METHODS (createDealer is modified) ---
-  
+  // --- DEALER METHODS ---
   Future<List<Dealer>> fetchDealers({String? region, String? area, String? type, int? userId}) async {
     final queryParams = <String, String>{
       if (region != null) 'region': region,
@@ -241,9 +208,7 @@ class ApiService {
 
   Future<void> deleteDealer(String dealerId) => _delete('dealers/$dealerId');
 
-
-  // --- OTHER METHODS (Unchanged) ... ---
-  
+  // --- OTHER METHODS ---
   Future<List<Pjp>> fetchPjpsForUser(int userId, {String? startDate, String? endDate, String? status}) async {
     final queryParams = <String, String>{
       if (startDate != null) 'startDate': startDate,
@@ -263,7 +228,6 @@ class ApiService {
   }
   
   Future<void> deletePjp(String pjpId) => _delete('pjp/$pjpId');
-
   
   Future<List<DailyTask>> fetchDailyTasksForUser(int userId, {String? startDate, String? endDate, String? status}) async {
     final queryParams = <String, String>{
@@ -319,7 +283,6 @@ class ApiService {
     final endpoint = Uri(path: 'technical-visit-reports/user/$userId', queryParameters: queryParams.isEmpty ? null : queryParams).toString();
     return _get(endpoint, (json) => (json as List).map((item) => TechnicalVisitReport.fromJson(item)).toList());
   }
-
   
   Future<Attendance> checkIn(Map<String, dynamic> checkInData) async {
     return _post('attendance/check-in', checkInData, (json) => Attendance.fromJson(json));

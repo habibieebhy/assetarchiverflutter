@@ -5,12 +5,12 @@ import 'package:assetarchiverflutter/api/api_service.dart';
 import 'package:assetarchiverflutter/models/pjp_model.dart';
 import 'package:assetarchiverflutter/models/dealer_model.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
-import 'package:maplibre_gl/maplibre_gl.dart'; // <-- ADD THIS IMPORT
+import 'package:maplibre_gl/maplibre_gl.dart';
 
 class EmployeePJPScreen extends StatefulWidget {
   final Employee employee;
-  // --- MODIFIED: The callback now expects a LatLng object, not a String ---
-  final Function(LatLng destination) onStartJourney;
+  // --- FINAL FIX: The callback now correctly expects a Map ---
+  final Function(Map<String, dynamic> journeyData) onStartJourney;
   final VoidCallback onPjpCreated;
 
   const EmployeePJPScreen({
@@ -59,40 +59,36 @@ class EmployeePJPScreenState extends State<EmployeePJPScreen> {
     );
   }
 
-  // --- MODIFIED: This function now parses coordinates from the 'areaToBeVisited' string ---
+  // --- FINAL FIX: Parses the combined string to get all data ---
   Future<void> _startJourneyForPjp(Pjp pjp) async {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
-
     try {
-      // 1. Parse the coordinate string (e.g., "26.1445,91.7362")
-      final parts = pjp.areaToBeVisited.split(',');
-      if (parts.length != 2) throw const FormatException('Invalid coordinate format in PJP.');
+      // 1. Parse the combined string: "DisplayName|lat|lon"
+      final parts = pjp.areaToBeVisited.split('|');
+      if (parts.length != 3) throw const FormatException('Invalid PJP data format.');
       
-      final lat = double.tryParse(parts[0]);
-      final lon = double.tryParse(parts[1]);
+      final String displayName = parts[0];
+      final double? lat = double.tryParse(parts[1]);
+      final double? lon = double.tryParse(parts[2]);
 
-      if (lat == null || lon == null) throw const FormatException('Could not parse numbers from PJP coordinates.');
+      if (lat == null || lon == null) throw const FormatException('Could not parse coordinates from PJP.');
 
-      // 2. Update the PJP status on the server
+      // 2. Update server status
       await _apiService.updatePjp(pjp.id, {'status': 'started'});
-      scaffoldMessenger.showSnackBar(const SnackBar(
-        content: Text('Journey Started!'),
-        backgroundColor: Colors.green,
-      ));
+      scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Journey Started!'), backgroundColor: Colors.green));
       
       refreshPjpList();
       widget.onPjpCreated(); 
       
-      // 3. Pass the parsed LatLng object to the callback
-      final destination = LatLng(lat, lon);
-      widget.onStartJourney(destination);
+      // 3. Pass a Map containing both display name and coordinates to the callback
+      widget.onStartJourney({
+        'displayName': displayName,
+        'destination': LatLng(lat, lon),
+      });
 
     } catch (e) {
       debugPrint("Failed to start journey: $e");
-      scaffoldMessenger.showSnackBar(SnackBar(
-        content: Text('Failed to start journey: PJP has invalid location data.'),
-        backgroundColor: Colors.red,
-      ));
+      scaffoldMessenger.showSnackBar(SnackBar(content: Text('Failed to start journey: PJP has invalid location data.'), backgroundColor: Colors.red));
     }
   }
 
@@ -167,6 +163,7 @@ class EmployeePJPScreenState extends State<EmployeePJPScreen> {
   }
 }
 
+// --- FINAL FIX: _PjpCard now parses the string to show only the name ---
 class _PjpCard extends StatelessWidget {
   final Pjp pjp;
   const _PjpCard({required this.pjp});
@@ -174,10 +171,9 @@ class _PjpCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    
-    // 👇 FIX: Use dealerName and only fallback to areaToBeVisited if the name is missing.
-    // The coordinate parsing logic is REMOVED.
-    String displayName = pjp.dealerName ?? pjp.areaToBeVisited; 
+    // Get the part before the first '|' to display the name/address.
+    // Provide a fallback if the format is unexpected.
+    final displayName = pjp.areaToBeVisited.split('|').first;
 
     return LiquidGlassCard(
       child: Row(
@@ -185,7 +181,7 @@ class _PjpCard extends StatelessWidget {
         children: [
           Expanded(
             child: Text(
-              displayName, // This now correctly displays the Dealer Name
+              displayName,
               style: textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
             ),
           ),
@@ -227,7 +223,7 @@ class _AddPjpFormState extends State<_AddPjpForm> {
     super.dispose();
   }
 
-  // --- MODIFIED: This function now stores coordinates in 'areaToBeVisited' ---
+  // --- FINAL FIX: Creates the combined "DisplayName|lat|lon" string ---
   Future<void> _submitForm() async {
     if (!_formKey.currentState!.validate() || _selectedDealer == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select a dealer.'), backgroundColor: Colors.orange));
@@ -235,13 +231,8 @@ class _AddPjpFormState extends State<_AddPjpForm> {
     }
     
     final dealer = _selectedDealer!;
-
-    // Check if the selected dealer has location data
     if (dealer.latitude == null || dealer.longitude == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('The selected dealer does not have location data saved.'), 
-        backgroundColor: Colors.orange,
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('The selected dealer does not have location data saved.'), backgroundColor: Colors.orange));
       return;
     }
 
@@ -250,8 +241,8 @@ class _AddPjpFormState extends State<_AddPjpForm> {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     
     try {
-      // Format the coordinates into a string: "latitude,longitude"
-      final String visitLocation = '${dealer.latitude},${dealer.longitude}';
+      final String displayName = '${dealer.name}, ${dealer.address}';
+      final String visitData = '$displayName|${dealer.latitude}|${dealer.longitude}';
 
       final newPjp = Pjp(
         id: '',
@@ -259,9 +250,8 @@ class _AddPjpFormState extends State<_AddPjpForm> {
         userId: int.parse(widget.employee.id),
         createdById: int.parse(widget.employee.id),
         status: 'pending',
-        areaToBeVisited: visitLocation, // Use the coordinate string here
+        areaToBeVisited: visitData, // Use the combined string here
         description: _descriptionController.text,
-        dealerName: dealer.name,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
       );

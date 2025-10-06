@@ -11,7 +11,7 @@ import 'package:assetarchiverflutter/screens/employee_management/employee_saleso
 import 'package:assetarchiverflutter/widgets/reusableglasscard.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:maplibre_gl/maplibre_gl.dart'; // --- MODIFIED: Added this import ---
+
 
 class NavScreen extends StatefulWidget {
   final Employee employee;
@@ -31,8 +31,8 @@ class _NavScreenState extends State<NavScreen> {
   late List<Widget> _pages;
   final List<String> _pageTitles = ['Home', 'PJP', 'Sales Order', 'Journey', 'Profile'];
 
-  // --- MODIFIED: State variable now holds a LatLng object ---
-  LatLng? _destinationFromPJP;
+  // --- MODIFIED: State variable now holds the Map of journey data ---
+  Map<String, dynamic>? _journeyDataFromPJP;
 
   @override
   void initState() {
@@ -41,10 +41,10 @@ class _NavScreenState extends State<NavScreen> {
     _buildPages();
   }
   
-  // --- MODIFIED: Method now accepts a LatLng object ---
-  void _navigateToJourneyWithDestination(LatLng destination) {
+  // --- MODIFIED: Method now accepts the Map ---
+  void _navigateToJourneyWithDestination(Map<String, dynamic> journeyData) {
     setState(() {
-      _destinationFromPJP = destination;
+      _journeyDataFromPJP = journeyData;
       _buildPages(); 
     });
     _pageController.animateToPage(3, duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
@@ -52,9 +52,9 @@ class _NavScreenState extends State<NavScreen> {
 
   void _clearPJPDestination() {
      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _destinationFromPJP != null) {
+        if (mounted && _journeyDataFromPJP != null) {
             setState(() {
-                _destinationFromPJP = null;
+                _journeyDataFromPJP = null;
                 _buildPages(); 
             });
         }
@@ -76,6 +76,7 @@ class _NavScreenState extends State<NavScreen> {
     super.dispose();
   }
   
+  // --- MODIFIED: Passes the new Map to the Journey Screen ---
   void _buildPages() {
      _pages = [
       EmployeeDashboardScreen(
@@ -85,16 +86,16 @@ class _NavScreenState extends State<NavScreen> {
       EmployeePJPScreen(
         key: _pjpKey,
         employee: widget.employee,
-        onStartJourney: _navigateToJourneyWithDestination, // Now correctly passes LatLng
+        onStartJourney: _navigateToJourneyWithDestination,
         onPjpCreated: () { 
           _dashboardKey.currentState?.refreshPjps();
         },
       ),
       SalesOrderScreen(employee: widget.employee),
       EmployeeJourneyScreen(
-        key: ValueKey(_destinationFromPJP),
+        key: ValueKey(_journeyDataFromPJP),
         employee: widget.employee, 
-        initialDestination: _destinationFromPJP, // Now correctly receives LatLng
+        initialJourneyData: _journeyDataFromPJP, // Pass the Map object
         onDestinationConsumed: _clearPJPDestination,
       ),
       EmployeeProfileScreen(employee: widget.employee),
@@ -225,8 +226,6 @@ class _NavScreenState extends State<NavScreen> {
   }
 }
 
-// The _AddDealerForm widget is omitted here for brevity, as it is unchanged from the last version you have.
-// ... (your existing _AddDealerForm code) ...
 class _AddDealerForm extends StatefulWidget {
   final Employee employee;
   const _AddDealerForm({required this.employee});
