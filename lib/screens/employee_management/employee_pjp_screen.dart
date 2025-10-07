@@ -9,7 +9,6 @@ import 'package:maplibre_gl/maplibre_gl.dart';
 
 class EmployeePJPScreen extends StatefulWidget {
   final Employee employee;
-  // --- FINAL FIX: The callback now correctly expects a Map ---
   final Function(Map<String, dynamic> journeyData) onStartJourney;
   final VoidCallback onPjpCreated;
 
@@ -59,11 +58,9 @@ class EmployeePJPScreenState extends State<EmployeePJPScreen> {
     );
   }
 
-  // --- FINAL FIX: Parses the combined string to get all data ---
   Future<void> _startJourneyForPjp(Pjp pjp) async {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     try {
-      // 1. Parse the combined string: "DisplayName|lat|lon"
       final parts = pjp.areaToBeVisited.split('|');
       if (parts.length != 3) throw const FormatException('Invalid PJP data format.');
       
@@ -73,14 +70,12 @@ class EmployeePJPScreenState extends State<EmployeePJPScreen> {
 
       if (lat == null || lon == null) throw const FormatException('Could not parse coordinates from PJP.');
 
-      // 2. Update server status
       await _apiService.updatePjp(pjp.id, {'status': 'started'});
       scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Journey Started!'), backgroundColor: Colors.green));
       
       refreshPjpList();
       widget.onPjpCreated(); 
       
-      // 3. Pass a Map containing both display name and coordinates to the callback
       widget.onStartJourney({
         'displayName': displayName,
         'destination': LatLng(lat, lon),
@@ -163,7 +158,6 @@ class EmployeePJPScreenState extends State<EmployeePJPScreen> {
   }
 }
 
-// --- FINAL FIX: _PjpCard now parses the string to show only the name ---
 class _PjpCard extends StatelessWidget {
   final Pjp pjp;
   const _PjpCard({required this.pjp});
@@ -171,8 +165,6 @@ class _PjpCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    // Get the part before the first '|' to display the name/address.
-    // Provide a fallback if the format is unexpected.
     final displayName = pjp.areaToBeVisited.split('|').first;
 
     return LiquidGlassCard(
@@ -223,7 +215,6 @@ class _AddPjpFormState extends State<_AddPjpForm> {
     super.dispose();
   }
 
-  // --- FINAL FIX: Creates the combined "DisplayName|lat|lon" string ---
   Future<void> _submitForm() async {
     if (!_formKey.currentState!.validate() || _selectedDealer == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select a dealer.'), backgroundColor: Colors.orange));
@@ -244,13 +235,23 @@ class _AddPjpFormState extends State<_AddPjpForm> {
       final String displayName = '${dealer.name}, ${dealer.address}';
       final String visitData = '$displayName|${dealer.latitude}|${dealer.longitude}';
 
+      // --- DEBUGGING LINES ADDED ---
+      debugPrint('--- DEBUG: Preparing to create PJP ---');
+      debugPrint('Dealer Name: ${dealer.name}');
+      debugPrint('Dealer Address: ${dealer.address}');
+      debugPrint('Dealer Lat: ${dealer.latitude}');
+      debugPrint('Dealer Lng: ${dealer.longitude}');
+      debugPrint('Final constructed string (areaToBeVisited): "$visitData"');
+      debugPrint('------------------------------------');
+      // --- END DEBUGGING LINES ---
+
       final newPjp = Pjp(
         id: '',
         planDate: DateTime.now(),
         userId: int.parse(widget.employee.id),
         createdById: int.parse(widget.employee.id),
         status: 'pending',
-        areaToBeVisited: visitData, // Use the combined string here
+        areaToBeVisited: visitData,
         description: _descriptionController.text,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),

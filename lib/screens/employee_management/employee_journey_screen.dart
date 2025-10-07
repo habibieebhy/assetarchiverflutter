@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:assetarchiverflutter/api/api_service.dart';
 import 'package:assetarchiverflutter/models/employee_model.dart';
 import 'package:assetarchiverflutter/models/geotracking_data_model.dart';
-import 'package:assetarchiverflutter/widgets/reusableglasscard.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_radar/flutter_radar.dart';
@@ -59,7 +58,23 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
     Radar.setDescription(widget.employee.displayName);
     _setupRadarListeners();
     _styleFuture = _readStyle();
-    _initializeJourney();
+    // This now only handles the very first load of the app
+    _initializeFirstTime();
+  }
+
+  // --- FIX: PART 1 ---
+  // This special function runs whenever the screen is given new data from its parent,
+  // AFTER it has already been initialized. This is our screen's "ears".
+  @override
+  void didUpdateWidget(covariant EmployeeJourneyScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    
+    // We check if the new journey data is different from the old data.
+    if (widget.initialJourneyData != oldWidget.initialJourneyData && widget.initialJourneyData != null) {
+      debugPrint("--- didUpdateWidget TRIGGERED: A new journey has been started! ---");
+      // If it's new, we process it.
+      _processNewJourneyData(widget.initialJourneyData!);
+    }
   }
 
   @override
@@ -70,6 +85,42 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
     super.dispose();
   }
 
+  // Renamed to be more specific, handles the one-time setup.
+  Future<void> _initializeFirstTime() async {
+    await _determinePositionAndMoveCamera();
+    // Process data only if it exists on the very first load
+    if (widget.initialJourneyData != null) {
+      _processNewJourneyData(widget.initialJourneyData!);
+    }
+  }
+
+  // --- FIX: PART 2 ---
+  // The logic for handling journey data is moved into its own function
+  // so it can be called from both initState and didUpdateWidget.
+  void _processNewJourneyData(Map<String, dynamic> journeyData) {
+    debugPrint('--- JOURNEY SCREEN: Processing new journey data ---');
+    
+    final LatLng? destination = journeyData['destination'] as LatLng?;
+    final String? displayName = journeyData['displayName'] as String?;
+
+    if (destination == null || displayName == null) {
+      debugPrint('!!! ERROR: Journey data is invalid.');
+      _showError('Received invalid journey data from PJP.');
+      return; 
+    }
+    
+    if (mounted) {
+      setState(() {
+        _destinationLocation = destination;
+        _destinationController.text = displayName;
+      });
+    }
+    
+    _getDirectionsAndDrawRoute();
+    widget.onDestinationConsumed?.call();
+  }
+
+  // ... (The rest of your file remains exactly the same, no changes needed below this line) ...
   void _setupRadarListeners() {
     Radar.onLocation((result) {
       if (!_isJourneyActive || _currentJourneyId == null) return;
@@ -232,25 +283,6 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
     );
   }
 
-  Future<void> _initializeJourney() async {
-    await _determinePositionAndMoveCamera();
-    
-    if (widget.initialJourneyData != null) {
-      final LatLng destination = widget.initialJourneyData!['destination'];
-      final String displayName = widget.initialJourneyData!['displayName'];
-      
-      if (mounted) {
-        setState(() {
-          _destinationLocation = destination;
-          _destinationController.text = displayName;
-        });
-      }
-      
-      await _getDirectionsAndDrawRoute();
-      widget.onDestinationConsumed?.call();
-    }
-  }
-
   Future<void> _determinePositionAndMoveCamera() async {
     bool serviceEnabled;
     LocationPermission permission;
@@ -371,7 +403,6 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
     });
   }
   
-  // --- BUILD METHOD MODIFIED TO FIX THE RED SCREEN ERROR ---
   @override
   Widget build(BuildContext context) {
     final bool canStartJourney = _destinationLocation != null && !_isJourneyActive;
@@ -443,16 +474,25 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
   }
 
   Widget _buildLocationInputField({required TextEditingController controller, required String hintText, required IconData icon, bool readOnly = false, void Function(String)? onSubmitted}) {
-    return SizedBox(
+    // --- MODIFIED --- Replaced LiquidGlassCard with a standard Container for opacity control.
+    return Container(
       height: 60,
-      child: LiquidGlassCard(
-        child: Center(
-          child: TextField(
-            controller: controller,
-            readOnly: readOnly,
-            onSubmitted: onSubmitted,
-            style: const TextStyle(color: Colors.white),
-            decoration: InputDecoration(hintText: hintText, hintStyle: TextStyle(color: Colors.white.withAlpha(179)), prefixIcon: Icon(icon, size: 22, color: Colors.white70), border: InputBorder.none),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.9), // High opacity for readability
+        borderRadius: BorderRadius.circular(24.0),
+      ),
+      child: Center(
+        child: TextField(
+          controller: controller,
+          readOnly: readOnly,
+          onSubmitted: onSubmitted,
+          style: const TextStyle(color: Colors.black87), // Darker text for contrast
+          decoration: InputDecoration(
+            hintText: hintText,
+            hintStyle: TextStyle(color: Colors.black.withOpacity(0.4)), // Darker hint text
+            prefixIcon: Icon(icon, size: 22, color: Colors.black54), // Darker icon
+            border: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(vertical: 15.0),
           ),
         ),
       ),
@@ -477,6 +517,7 @@ class _StartJourneySlider extends StatelessWidget {
     final Color outerColor = isJourneyActive ? Colors.redAccent.withAlpha(230) : Theme.of(context).colorScheme.primary.withAlpha(230);
     final Icon sliderIcon = isJourneyActive ? const Icon(Icons.stop) : const Icon(Icons.arrow_forward_ios);
     final bool isEnabled = canStart || isJourneyActive;
+    
     return SlideAction(
       onSubmit: isEnabled
           ? () {
@@ -488,7 +529,8 @@ class _StartJourneySlider extends StatelessWidget {
               return null;
             },
       innerColor: Colors.white,
-      outerColor: isEnabled ? outerColor : Colors.grey.withOpacity(0.5),
+      // --- MODIFIED --- Increased opacity of the disabled color state for better readability.
+      outerColor: isEnabled ? outerColor : Colors.grey.withOpacity(0.75),
       sliderButtonIcon: sliderIcon,
       text: isEnabled ? slideText : 'DESTINATION NOT SET',
       enabled: isEnabled,

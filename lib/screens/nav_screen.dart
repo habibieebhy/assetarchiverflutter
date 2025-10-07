@@ -1,4 +1,3 @@
-// NavScreen.dart
 import 'dart:ui';
 import 'package:assetarchiverflutter/api/api_service.dart';
 import 'package:assetarchiverflutter/models/dealer_model.dart';
@@ -13,7 +12,6 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 
-// --- Step 1: The "Brain" for your navigation, living inside this file. ---
 class NavProvider with ChangeNotifier {
   int _selectedIndex = 0;
   Map<String, dynamic>? _journeyData;
@@ -23,12 +21,12 @@ class NavProvider with ChangeNotifier {
 
   void changePage(int index) {
     _selectedIndex = index;
-    notifyListeners(); // Announce the change to the UI
+    notifyListeners();
   }
 
   void startJourney(Map<String, dynamic> data) {
     _journeyData = data;
-    _selectedIndex = 3; // Go to the journey page
+    _selectedIndex = 3;
     notifyListeners();
   }
 
@@ -37,21 +35,15 @@ class NavProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // The refresh logic that was previously called via GlobalKey can live here.
-  // For now, they can be placeholders.
   void refreshDashboard() {
-    // TODO: Add refresh logic here
     debugPrint("Refreshing Dashboard...");
   }
 
   void refreshPjpList() {
-    // TODO: Add refresh logic here
     debugPrint("Refreshing PJP List...");
   }
 }
 
-
-// --- Step 2: The NavScreen now creates and provides the state. ---
 class NavScreen extends StatefulWidget {
   final Employee employee;
   const NavScreen({super.key, required this.employee});
@@ -61,8 +53,11 @@ class NavScreen extends StatefulWidget {
 }
 
 class _NavScreenState extends State<NavScreen> {
-  // The state now only holds a single, final instance of our provider.
   late final NavProvider _navProvider;
+  
+  // --- FIX: PART 1 ---
+  // Create a GlobalKey for the Dashboard's state. This gives us direct access to it.
+  final GlobalKey<EmployeeDashboardScreenState> _dashboardKey = GlobalKey<EmployeeDashboardScreenState>();
 
   @override
   void initState() {
@@ -78,25 +73,30 @@ class _NavScreenState extends State<NavScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // We provide the state to the rest of the widget tree.
-    // The `Consumer` widget efficiently rebuilds the UI when the provider changes.
     return ChangeNotifierProvider.value(
       value: _navProvider,
       child: Consumer<NavProvider>(
         builder: (context, provider, child) {
-          // --- Step 3: The UI is now a "dumb" widget that just displays the state. ---
           final pageTitles = ['Home', 'PJP', 'Sales Order', 'Journey', 'Profile'];
 
           final pages = <Widget>[
-            EmployeeDashboardScreen(employee: widget.employee),
+            // --- FIX: PART 2 ---
+            // Pass the key to the Dashboard screen instance.
+            EmployeeDashboardScreen(key: _dashboardKey, employee: widget.employee),
             EmployeePJPScreen(
               employee: widget.employee,
-              onStartJourney: provider.startJourney, // Directly use provider method
-              onPjpCreated: provider.refreshDashboard,
+              onStartJourney: provider.startJourney,
+              // --- FIX: PART 3 ---
+              // When a PJP is created, call our key to trigger the refresh,
+              // then call the provider's debugPrint method.
+              onPjpCreated: () {
+                _dashboardKey.currentState?.refreshData();
+                provider.refreshDashboard();
+              },
             ),
             SalesOrderScreen(employee: widget.employee),
             EmployeeJourneyScreen(
-              initialJourneyData: provider.journeyData, // Get data from provider
+              initialJourneyData: provider.journeyData,
               employee: widget.employee,
               onDestinationConsumed: provider.clearJourneyData,
             ),
@@ -131,8 +131,6 @@ class _NavScreenState extends State<NavScreen> {
     );
   }
 
-  // --- UI Helper Methods ---
-  
   Widget _buildGlassNavBar(BuildContext context, NavProvider provider) {
     return LiquidGlassCard(
       child: BottomNavigationBar(
@@ -147,7 +145,6 @@ class _NavScreenState extends State<NavScreen> {
         ],
         currentIndex: provider.selectedIndex,
         onTap: (index) {
-          // Tell the provider to handle the tap logic
           if (index == 0) provider.refreshDashboard();
           if (index == 1) provider.refreshPjpList();
           provider.changePage(index);

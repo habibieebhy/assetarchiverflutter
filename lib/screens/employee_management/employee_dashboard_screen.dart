@@ -6,7 +6,6 @@ import 'package:assetarchiverflutter/models/employee_model.dart';
 import 'package:assetarchiverflutter/api/api_service.dart';
 import 'package:assetarchiverflutter/models/pjp_model.dart';
 import 'package:image_picker/image_picker.dart';
-// --- NEW: Imported Geolocator for live location data ---
 import 'package:geolocator/geolocator.dart';
 
 class EmployeeDashboardScreen extends StatefulWidget {
@@ -18,11 +17,9 @@ class EmployeeDashboardScreen extends StatefulWidget {
   });
 
   @override
-  // --- FIXED: Changed to public state type ---
   State<EmployeeDashboardScreen> createState() => EmployeeDashboardScreenState();
 }
 
-// --- FIXED: Renamed the class to be public (removed the '_') ---
 class EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> with WidgetsBindingObserver {
   final ApiService _apiService = ApiService();
   late Future<List<Pjp>> _pjpFuture;
@@ -37,19 +34,20 @@ class EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> with W
     WidgetsBinding.instance.addObserver(this);
 
     _setGreeting();
-    refreshPjps();
+    refreshData(); // Also update this call
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
-      refreshPjps();
+      refreshData(); // Also update this call
     }
   }
   
-  // --- This method is now public so NavScreen can call it ---
-  void refreshPjps() {
+  // --- FIX: Renamed this method from 'refreshPjps' to 'refreshData' ---
+  // This method is now public so NavScreen can call it.
+  void refreshData() {
     if (mounted) {
       setState(() {
         _pjpFuture = _apiService.fetchPjpsForUser(
@@ -90,7 +88,6 @@ class EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> with W
     return null;
   }
   
-  // --- NEW: Helper to get current device position ---
   Future<Position?> _getCurrentPosition() async {
      try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -123,7 +120,6 @@ class EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> with W
   }
 
 
-  // --- UPDATED: Now uses image capture and live location data ---
   Future<void> _handleCheckIn() async {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     setState(() => _isCheckingIn = true);
@@ -147,7 +143,7 @@ class EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> with W
       final checkInData = {
         'userId': int.parse(widget.employee.id),
         'attendanceDate': DateTime.now().toIso8601String(),
-        'locationName': 'Live Location', // Updated
+        'locationName': 'Live Location',
         'inTimeLatitude': position.latitude,
         'inTimeLongitude': position.longitude,
         'inTimeImageUrl': imageUrl,
@@ -168,7 +164,6 @@ class EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> with W
     }
   }
   
-  // --- UPDATED: Now uses image capture and live location data ---
   Future<void> _handleCheckOut() async {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     setState(() => _isCheckingOut = true);
@@ -332,4 +327,3 @@ class EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> with W
     );
   }
 }
-
