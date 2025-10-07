@@ -71,12 +71,13 @@ class EmployeePJPScreenState extends State<EmployeePJPScreen> {
       if (lat == null || lon == null) throw const FormatException('Could not parse coordinates from PJP.');
 
       await _apiService.updatePjp(pjp.id, {'status': 'started'});
-      scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Journey Started!'), backgroundColor: Colors.green));
+      scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Journey Planned now redirecting..!'), backgroundColor: Colors.green));
       
       refreshPjpList();
       widget.onPjpCreated(); 
       
       widget.onStartJourney({
+        'pjpId': pjp.id,
         'displayName': displayName,
         'destination': LatLng(lat, lon),
       });

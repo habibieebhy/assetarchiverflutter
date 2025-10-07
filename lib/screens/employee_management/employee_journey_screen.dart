@@ -11,6 +11,8 @@ import 'package:http/http.dart' as http;
 import 'package:maplibre_gl/maplibre_gl.dart';
 import 'package:polyline_codec/polyline_codec.dart';
 import 'package:slide_to_act/slide_to_act.dart';
+// --- NEW: Import for notifications ---
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 class EmployeeJourneyScreen extends StatefulWidget {
   final Employee employee;
@@ -42,9 +44,15 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
   double _totalDistanceTravelled = 0.0;
   Position? _lastRecordedPosition;
   String? _currentJourneyId;
-
+  String? _currentPjpId;
   LatLng? _currentUserLocation;
   LatLng? _destinationLocation;
+  
+  final List<LatLng> _routeTaken = [];
+  
+  // --- NEW: Notification plugin and state flag ---
+  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+  bool _isNearDestinationNotified = false;
 
   static const _initialCameraPosition = CameraPosition(
     target: LatLng(26.1445, 91.7362),
@@ -54,25 +62,21 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
   @override
   void initState() {
     super.initState();
+    // --- NEW: Initialize notification settings ---
+    _initializeNotifications();
+
     Radar.setUserId(widget.employee.id);
     Radar.setDescription(widget.employee.displayName);
     _setupRadarListeners();
     _styleFuture = _readStyle();
-    // This now only handles the very first load of the app
     _initializeFirstTime();
   }
-
-  // --- FIX: PART 1 ---
-  // This special function runs whenever the screen is given new data from its parent,
-  // AFTER it has already been initialized. This is our screen's "ears".
+  
   @override
   void didUpdateWidget(covariant EmployeeJourneyScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    
-    // We check if the new journey data is different from the old data.
     if (widget.initialJourneyData != oldWidget.initialJourneyData && widget.initialJourneyData != null) {
       debugPrint("--- didUpdateWidget TRIGGERED: A new journey has been started! ---");
-      // If it's new, we process it.
       _processNewJourneyData(widget.initialJourneyData!);
     }
   }
@@ -85,42 +89,84 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
     super.dispose();
   }
 
-  // Renamed to be more specific, handles the one-time setup.
+  // --- NEW: All notification logic is here ---
+  void _initializeNotifications() async {
+    const AndroidInitializationSettings initializationSettingsAndroid =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const DarwinInitializationSettings initializationSettingsIOS = DarwinInitializationSettings();
+    const InitializationSettings initializationSettings = InitializationSettings(
+        android: initializationSettingsAndroid, iOS: initializationSettingsIOS);
+    await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+  }
+
+  Future<void> _showNearArrivalNotification() async {
+    const AndroidNotificationDetails androidDetails =
+        AndroidNotificationDetails(
+            'near_arrival_channel', 'Near Arrival Notifications',
+            channelDescription: 'Notifies when you are close to your destination',
+            importance: Importance.max, priority: Priority.high, showWhen: true);
+    const NotificationDetails platformDetails = NotificationDetails(android: androidDetails);
+    await flutterLocalNotificationsPlugin.show(
+        0, 'Approaching Destination', 'You are about to reach ${_destinationController.text}.', platformDetails);
+  }
+
+  Future<void> _showTrackingNotification() async {
+    const int trackingNotificationId = 1;
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'tracking_channel', 'Tracking Notifications',
+      channelDescription: 'Shows when your location is being tracked for a journey.',
+      importance: Importance.low, priority: Priority.low,
+      ongoing: true, autoCancel: false,
+    );
+    const NotificationDetails platformDetails = NotificationDetails(android: androidDetails);
+    await flutterLocalNotificationsPlugin.show(
+      trackingNotificationId, 'Journey in Progress', 'Your location is being actively tracked.', platformDetails);
+  }
+
+  Future<void> _cancelTrackingNotification() async {
+    const int trackingNotificationId = 1;
+    await flutterLocalNotificationsPlugin.cancel(trackingNotificationId);
+  }
+  // --- END of notification logic ---
+
   Future<void> _initializeFirstTime() async {
     await _determinePositionAndMoveCamera();
-    // Process data only if it exists on the very first load
     if (widget.initialJourneyData != null) {
       _processNewJourneyData(widget.initialJourneyData!);
     }
   }
 
-  // --- FIX: PART 2 ---
-  // The logic for handling journey data is moved into its own function
-  // so it can be called from both initState and didUpdateWidget.
-  void _processNewJourneyData(Map<String, dynamic> journeyData) {
-    debugPrint('--- JOURNEY SCREEN: Processing new journey data ---');
-    
-    final LatLng? destination = journeyData['destination'] as LatLng?;
-    final String? displayName = journeyData['displayName'] as String?;
+void _processNewJourneyData(Map<String, dynamic> journeyData) async {
+  // --- MODIFIED: Receive and store the PJP ID ---
+  final String? pjpId = journeyData['pjpId'] as String?;
+  final LatLng? destination = journeyData['destination'] as LatLng?;
+  final String? displayName = journeyData['displayName'] as String?;
 
-    if (destination == null || displayName == null) {
-      debugPrint('!!! ERROR: Journey data is invalid.');
-      _showError('Received invalid journey data from PJP.');
-      return; 
-    }
-    
-    if (mounted) {
-      setState(() {
-        _destinationLocation = destination;
-        _destinationController.text = displayName;
-      });
-    }
-    
-    _getDirectionsAndDrawRoute();
-    widget.onDestinationConsumed?.call();
+  if (destination == null || displayName == null || pjpId == null) {
+    _showError('Received invalid journey data from PJP.');
+    return; 
   }
+  
+  _currentPjpId = pjpId; // Store the ID for later
+  
+  _routeTaken.clear();
+  final controller = await _controllerCompleter.future;
+  try {
+    await controller.removeLayer('route-taken-line');
+    await controller.removeSource('route-taken-source');
+  } catch (_) {}
 
-  // ... (The rest of your file remains exactly the same, no changes needed below this line) ...
+  if (mounted) {
+    setState(() {
+      _destinationLocation = destination;
+      _destinationController.text = displayName;
+    });
+  }
+  
+  await _getDirectionsAndDrawRoute();
+  widget.onDestinationConsumed?.call();
+}
+
   void _setupRadarListeners() {
     Radar.onLocation((result) {
       if (!_isJourneyActive || _currentJourneyId == null) return;
@@ -134,9 +180,7 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
           timestamp: DateTime.now(),
           heading: locationMap['heading'] as double? ?? 0.0,
           altitude: locationMap['altitude'] as double? ?? 0.0,
-          speedAccuracy: 0.0,
-          altitudeAccuracy: 0.0,
-          headingAccuracy: 0.0,
+          speedAccuracy: 0.0, altitudeAccuracy: 0.0, headingAccuracy: 0.0,
         );
         _calculateDistanceAndReport(position);
       }
@@ -154,63 +198,86 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
       }
     });
   }
-
+  
   void _calculateDistanceAndReport(Position position) async {
     if (!mounted || !_isJourneyActive) return;
+
     if (_lastRecordedPosition != null) {
-      final distance = Geolocator.distanceBetween(
-        _lastRecordedPosition!.latitude,
-        _lastRecordedPosition!.longitude,
-        position.latitude,
-        position.longitude,
-      );
-      _totalDistanceTravelled += distance;
+      try {
+        var res = await Radar.getDistance(
+          origin: {'latitude': _lastRecordedPosition!.latitude, 'longitude': _lastRecordedPosition!.longitude},
+          destination: {'latitude': position.latitude, 'longitude': position.longitude},
+          modes: ['car'],
+          units: 'metric',
+        );
+        if (res != null && res['status'] == 'SUCCESS' && res['routes'] != null && res['routes']['car'] != null) {
+          final double segmentDistance = (res['routes']['car']['distance']['value'] as num).toDouble();
+          _totalDistanceTravelled += segmentDistance;
+        } else {
+          _totalDistanceTravelled += Geolocator.distanceBetween(_lastRecordedPosition!.latitude, _lastRecordedPosition!.longitude, position.latitude, position.longitude);
+        }
+      } catch (e) {
+        _totalDistanceTravelled += Geolocator.distanceBetween(_lastRecordedPosition!.latitude, _lastRecordedPosition!.longitude, position.latitude, position.longitude);
+      }
     }
+
     _lastRecordedPosition = position;
-    _drawUserLocationPointer(LatLng(position.latitude, position.longitude));
+    final newPoint = LatLng(position.latitude, position.longitude);
+    _routeTaken.add(newPoint);
+
+    _drawUserLocationPointer(newPoint);
+    _updateTravelledPolyline();
+
+    // --- NEW: Check distance and send "near arrival" notification ---
+    if (_destinationLocation != null && !_isNearDestinationNotified) {
+      final double distanceToDestination = Geolocator.distanceBetween(
+        position.latitude, position.longitude,
+        _destinationLocation!.latitude, _destinationLocation!.longitude
+      );
+      // If user is within 500 meters, send notification
+      if (distanceToDestination < 500) {
+        _showNearArrivalNotification();
+        _isNearDestinationNotified = true; // Set flag so it only sends once
+      }
+    }
+
     final trackingPoint = GeoTrackingPoint(
       userId: int.parse(widget.employee.id),
       journeyId: _currentJourneyId!,
-      latitude: position.latitude,
-      longitude: position.longitude,
-      accuracy: position.accuracy,
-      speed: position.speed,
-      destLat: _destinationLocation?.latitude,
-      destLng: _destinationLocation?.longitude,
+      latitude: position.latitude, longitude: position.longitude,
+      accuracy: position.accuracy, speed: position.speed,
+      destLat: _destinationLocation?.latitude, destLng: _destinationLocation?.longitude,
       totalDistanceTravelled: _totalDistanceTravelled,
-      isActive: true,
-      locationType: 'RADAR_GPS',
-      altitude: position.altitude,
-      heading: position.heading,
+      isActive: true, locationType: 'RADAR_API_DISTANCE',
+      altitude: position.altitude, heading: position.heading,
     );
     _apiService.sendGeoTrackingPoint(trackingPoint);
+
     setState(() {
       final distanceKm = _totalDistanceTravelled / 1000.0;
       _originController.text = "Distance: ${distanceKm.toStringAsFixed(2)} km";
     });
   }
-
+  
   void _startJourneyWithRadar() async {
     if (_isJourneyActive || _destinationLocation == null) return;
-    _currentJourneyId = 'JRN-${widget.employee.id}-${DateTime.now().millisecondsSinceEpoch}';
+
+    // --- NEW: Reset the notification flags for the new journey ---
+    _isNearDestinationNotified = false;
+
+    _routeTaken.clear();
+    
     try {
       Position initialPosition = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-      _lastRecordedPosition = Position(
-        latitude: initialPosition.latitude,
-        longitude: initialPosition.longitude,
-        timestamp: initialPosition.timestamp,
-        accuracy: initialPosition.accuracy,
-        altitude: initialPosition.altitude,
-        heading: initialPosition.heading,
-        speed: initialPosition.speed,
-        speedAccuracy: initialPosition.speedAccuracy,
-        altitudeAccuracy: initialPosition.altitudeAccuracy,
-        headingAccuracy: initialPosition.headingAccuracy,
-      );
+      _lastRecordedPosition = initialPosition;
+      _routeTaken.add(LatLng(initialPosition.latitude, initialPosition.longitude));
     } catch (e) {
-      _showError("Could not get initial location to start tracking: $e");
+      _showError("Could not get initial location: $e");
       return;
     }
+
+    _currentJourneyId = 'JRN-${widget.employee.id}-${DateTime.now().millisecondsSinceEpoch}';
+
     final tripOptions = {
       "externalId": _currentJourneyId!,
       "destinationLatitude": _destinationLocation!.latitude,
@@ -220,123 +287,136 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
     };
     try {
       await Radar.startTrip(tripOptions: tripOptions, trackingOptions: {'preset': 'continuous'});
+      
+      // --- NEW: Show the persistent "You are being tracked" notification ---
+      _showTrackingNotification();
+
       setState(() {
         _isJourneyActive = true;
+        _totalDistanceTravelled = 0.0;
         _originController.text = "Journey in Progress (0.00 km)";
       });
       _showError("Journey Tracking Started!");
     } catch (e) {
-      _showError("Failed to start Radar trip tracking. Check native setup/permissions.");
-      debugPrint("Radar startTrip Error: $e");
+      _showError("Failed to start Radar trip tracking.");
     }
   }
 
-  void _stopJourneyWithRadar() async {
-    if (!_isJourneyActive) return;
-    try {
-      await Radar.completeTrip();
-    } catch (e) {
-      debugPrint("Error completing Radar trip on dispose: $e");
-    }
-    
-    if (_lastRecordedPosition != null && _currentJourneyId != null) {
-      final finalTrackingPoint = GeoTrackingPoint(
-        userId: int.parse(widget.employee.id),
-        journeyId: _currentJourneyId!,
-        latitude: _lastRecordedPosition!.latitude,
-        longitude: _lastRecordedPosition!.longitude,
-        totalDistanceTravelled: _totalDistanceTravelled,
-        isActive: false,
-        locationType: 'FINAL_STOP',
-      );
-      _apiService.sendGeoTrackingPoint(finalTrackingPoint);
-    }
-    final finalDistanceKm = _totalDistanceTravelled / 1000.0;
-    if (mounted) {
-      setState(() {
-        _isJourneyActive = false;
-        _currentJourneyId = null;
-        _totalDistanceTravelled = 0.0;
-        _lastRecordedPosition = null;
-        _originController.text = "Journey Complete (${finalDistanceKm.toStringAsFixed(2)} km)";
-      });
-    }
-    _showError("Journey Ended. Total distance: ${finalDistanceKm.toStringAsFixed(2)} km.");
+void _stopJourneyWithRadar() async {
+  _cancelTrackingNotification();
+
+  if (!_isJourneyActive) return;
+  try {
+    await Radar.completeTrip();
+  } catch (e) {
+    debugPrint("Error completing Radar trip: $e");
   }
+  
+  if (_lastRecordedPosition != null && _currentJourneyId != null) {
+    final finalTrackingPoint = GeoTrackingPoint(
+      userId: int.parse(widget.employee.id),
+      journeyId: _currentJourneyId!,
+      latitude: _lastRecordedPosition!.latitude, longitude: _lastRecordedPosition!.longitude,
+      totalDistanceTravelled: _totalDistanceTravelled,
+      isActive: false, locationType: 'FINAL_STOP',
+    );
+    _apiService.sendGeoTrackingPoint(finalTrackingPoint);
+  }
+
+  // --- MODIFIED: Update the PJP status to 'completed' ---
+  if (_currentPjpId != null) {
+    try {
+      await _apiService.updatePjp(_currentPjpId!, {'status': 'completed'});
+      debugPrint("✅ PJP status updated to completed.");
+    } catch (e) {
+      debugPrint("❌ Failed to update PJP status to completed: $e");
+    }
+  }
+
+  final finalDistanceKm = _totalDistanceTravelled / 1000.0;
+  if (mounted) {
+    setState(() {
+      _isJourneyActive = false;
+      _currentJourneyId = null;
+      _currentPjpId = null; // Clear the ID for the next journey
+      _originController.text = "Journey Complete (${finalDistanceKm.toStringAsFixed(2)} km)";
+    });
+  }
+  _showError("Journey Ended. Total distance: ${finalDistanceKm.toStringAsFixed(2)} km.");
+}
 
   void _showDestinationArrivalNotification() {
     if (!mounted || !_isJourneyActive) return;
     _stopJourneyWithRadar();
     showDialog(
-      context: context,
-      barrierDismissible: false,
+      context: context, barrierDismissible: false,
       builder: (context) => AlertDialog(
         title: const Text('Destination Reached! 🎯'),
-        content: const Text('You have arrived at your destination geofence. The journey has been automatically finalized.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('OK'),
-          )
-        ],
+        content: Text('You have arrived at ${_destinationController.text}. The journey has been automatically finalized.'),
+        actions: [TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK'))],
       ),
     );
   }
 
   Future<void> _determinePositionAndMoveCamera() async {
-    bool serviceEnabled;
-    LocationPermission permission;
     setState(() => _originController.text = "Checking permissions...");
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      setState(() => _originController.text = 'Location services are disabled.');
-      return;
-    }
-    permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        setState(() => _originController.text = 'Location permissions are denied');
+    try {
+      String? status = await Radar.getPermissionsStatus();
+      if (status == 'DENIED' || status == 'NOT_DETERMINED') {
+        status = await Radar.requestPermissions(true);
+      }
+
+      if (status != 'GRANTED_BACKGROUND' && status != 'GRANTED_FOREGROUND') {
+        setState(() => _originController.text = 'Location permissions denied');
+        _showError('Background location permissions are required for tracking.');
         return;
       }
-    }
-    if (permission == LocationPermission.deniedForever) {
-      setState(() => _originController.text = 'Permissions permanently denied');
-      return;
-    }
-    setState(() => _originController.text = "Fetching location...");
-    try {
+      
+      setState(() => _originController.text = "Fetching location...");
       Position position = await Geolocator.getCurrentPosition();
       _currentUserLocation = LatLng(position.latitude, position.longitude);
-      setState(() => _originController.text = "My Current Location");
+      
+      if(mounted) setState(() => _originController.text = "My Current Location");
+
       final controller = await _controllerCompleter.future;
       await controller.animateCamera(CameraUpdate.newCameraPosition(
         CameraPosition(target: _currentUserLocation!, zoom: 15.0),
       ));
       _drawUserLocationPointer(_currentUserLocation!);
+
     } catch (e) {
-      setState(() => _originController.text = "Failed to get location");
-      debugPrint("Geolocator error: $e");
+      if(mounted) setState(() => _originController.text = "Failed to get location");
+      _showError("Error getting location: $e");
     }
   }
 
   Future<void> _drawUserLocationPointer(LatLng point) async {
     final controller = await _controllerCompleter.future;
-    await controller.removeLayer('user-location-circle-outer');
-    await controller.removeLayer('user-location-circle-inner');
-    await controller.removeSource('user-location-source');
+    try {
+      await controller.removeLayer('user-location-circle-outer');
+      await controller.removeLayer('user-location-circle-inner');
+      await controller.removeSource('user-location-source');
+    } catch (_) {} // Ignore if not found
     await controller.addSource('user-location-source', GeojsonSourceProperties(data: {'type': 'FeatureCollection', 'features': [{'type': 'Feature', 'properties': {}, 'geometry': {'type': 'Point', 'coordinates': [point.longitude, point.latitude]}}]}));
     await controller.addCircleLayer('user-location-source', 'user-location-circle-outer', const CircleLayerProperties(circleColor: '#FFFFFF', circleRadius: 12.0, circleOpacity: 0.9));
     await controller.addCircleLayer('user-location-source', 'user-location-circle-inner', const CircleLayerProperties(circleColor: '#3567FB', circleRadius: 8.0, circleOpacity: 1.0));
   }
 
+  Future<void> _updateTravelledPolyline() async {
+    if (_routeTaken.length < 2) return;
+    final controller = await _controllerCompleter.future;
+    try {
+      await controller.removeLayer('route-taken-line');
+      await controller.removeSource('route-taken-source');
+    } catch (_) {} // Ignore if not found
+    await controller.addSource('route-taken-source', GeojsonSourceProperties(data: {'type': 'FeatureCollection', 'features': [{'type': 'Feature', 'properties': {}, 'geometry': {'type': 'LineString', 'coordinates': _routeTaken.map((p) => [p.longitude, p.latitude]).toList()}}]}));
+    await controller.addLineLayer('route-taken-source', 'route-taken-line', const LineLayerProperties(lineColor: '#FF0000', lineWidth: 6.0, lineOpacity: 0.6, lineCap: 'round', lineJoin: 'round'));
+  }
+
   Future<void> _handleDestinationSubmit(String destinationAddress) async {
-    if (_radarApiKey == null) {
-      _showError("Radar API Key is not configured.");
-      return;
-    }
+    if (_radarApiKey == null) return;
     if (_currentUserLocation == null) {
-      _showError("Current location not available. Cannot search.");
+      _showError("Current location not available.");
       return;
     }
     final autocompleteUrl = Uri.parse('https://api.radar.io/v1/autocomplete?query=$destinationAddress&near=${_currentUserLocation!.latitude},${_currentUserLocation!.longitude}');
@@ -347,24 +427,21 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
         if (data['addresses'] != null && data['addresses'].isNotEmpty) {
           final lat = data['addresses'][0]['latitude'];
           final lon = data['addresses'][0]['longitude'];
-          setState(() => _destinationLocation = LatLng(lat, lon));
+          if(mounted) setState(() => _destinationLocation = LatLng(lat, lon));
           _getDirectionsAndDrawRoute();
         } else {
-          _showError("Could not find location: $destinationAddress");
+          _showError("Could not find location.");
         }
       } else {
-        throw Exception('Failed to geocode address: ${response.body}');
+        throw Exception('Failed to geocode address');
       }
     } catch (e) {
-      _showError("Error finding destination: $e");
+      _showError("Error finding destination.");
     }
   }
 
   Future<void> _getDirectionsAndDrawRoute() async {
-    if (_currentUserLocation == null || _destinationLocation == null) {
-      _showError("Origin or destination is not set.");
-      return;
-    }
+    if (_currentUserLocation == null || _destinationLocation == null) return;
     final locations = '${_currentUserLocation!.latitude},${_currentUserLocation!.longitude}|${_destinationLocation!.latitude},${_destinationLocation!.longitude}';
     final url = Uri.parse('https://api.radar.io/v1/route/directions?locations=$locations&mode=car&units=metric&geometry=polyline5');
     try {
@@ -375,15 +452,17 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
         final polyline = PolylineCodec.decode(polylineString);
         final routePoints = polyline.map((p) => LatLng(p[0].toDouble(), p[1].toDouble())).toList();
         final controller = await _controllerCompleter.future;
-        await controller.removeLayer('route-line');
-        await controller.removeSource('route-source');
+        try {
+          await controller.removeLayer('route-line');
+          await controller.removeSource('route-source');
+        } catch (_) {} // Ignore if not found
         await controller.addSource('route-source', GeojsonSourceProperties(data: {'type': 'FeatureCollection', 'features': [{'type': 'Feature', 'properties': {}, 'geometry': {'type': 'LineString', 'coordinates': routePoints.map((p) => [p.longitude, p.latitude]).toList()}}]}));
         await controller.addLineLayer('route-source', 'route-line', const LineLayerProperties(lineColor: '#3567FB', lineWidth: 5.0, lineOpacity: 0.8, lineCap: 'round', lineJoin: 'round'));
       } else {
-        throw Exception('Failed to load directions: ${response.body}');
+        throw Exception('Failed to load directions');
       }
     } catch (e) {
-      _showError("Error fetching route: $e");
+      _showError("Error fetching route.");
     }
   }
 
@@ -395,7 +474,7 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
   }
 
   Future<String> _readStyle() async {
-    if (_stadiaApiKey == null) throw Exception("Stadia Maps API key not found in your .env file");
+    if (_stadiaApiKey == null) throw Exception("Stadia Maps API key not found.");
     return jsonEncode({
       "version": 8,
       "sources": {"stadia": {"type": "raster", "tiles": ["https://tiles.stadiamaps.com/tiles/osm_bright/{z}/{x}/{y}@2x.png?api_key=$_stadiaApiKey"], "tileSize": 256}},
@@ -474,11 +553,10 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
   }
 
   Widget _buildLocationInputField({required TextEditingController controller, required String hintText, required IconData icon, bool readOnly = false, void Function(String)? onSubmitted}) {
-    // --- MODIFIED --- Replaced LiquidGlassCard with a standard Container for opacity control.
     return Container(
       height: 60,
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.9), // High opacity for readability
+        color: Colors.white.withOpacity(0.9),
         borderRadius: BorderRadius.circular(24.0),
       ),
       child: Center(
@@ -486,11 +564,11 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
           controller: controller,
           readOnly: readOnly,
           onSubmitted: onSubmitted,
-          style: const TextStyle(color: Colors.black87), // Darker text for contrast
+          style: const TextStyle(color: Colors.black87),
           decoration: InputDecoration(
             hintText: hintText,
-            hintStyle: TextStyle(color: Colors.black.withOpacity(0.4)), // Darker hint text
-            prefixIcon: Icon(icon, size: 22, color: Colors.black54), // Darker icon
+            hintStyle: TextStyle(color: Colors.black.withOpacity(0.4)),
+            prefixIcon: Icon(icon, size: 22, color: Colors.black54),
             border: InputBorder.none,
             contentPadding: const EdgeInsets.symmetric(vertical: 15.0),
           ),
@@ -529,7 +607,6 @@ class _StartJourneySlider extends StatelessWidget {
               return null;
             },
       innerColor: Colors.white,
-      // --- MODIFIED --- Increased opacity of the disabled color state for better readability.
       outerColor: isEnabled ? outerColor : Colors.grey.withOpacity(0.75),
       sliderButtonIcon: sliderIcon,
       text: isEnabled ? slideText : 'DESTINATION NOT SET',

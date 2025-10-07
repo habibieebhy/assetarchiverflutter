@@ -27,6 +27,7 @@ dependencies:
   flutter_slidable: ^3.1.0
   image_picker: ^1.1.2
   provider: ^6.1.5
+  flutter_local_notifications: ^19.4.2
 
 
 dev_dependencies:
