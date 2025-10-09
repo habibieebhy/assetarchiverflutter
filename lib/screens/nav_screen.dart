@@ -198,6 +198,7 @@ class _NavScreenState extends State<NavScreen> {
             _buildDrawerActionItem(context, icon: Icons.description, text: 'CREATE TVR'),
             _buildDrawerActionItem(context, icon: Icons.assessment_outlined, text: 'COMPETETION FORM'),
             _buildDrawerActionItem(context, icon: Icons.shopping_cart, text: 'MODIFY SALES ORDER'),
+            _buildDrawerActionItem(context, icon: Icons.account_box_sharp, text: 'APPLY FOR LEAVE'),
           ],
         ),
       ),

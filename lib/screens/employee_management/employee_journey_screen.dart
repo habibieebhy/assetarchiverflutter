@@ -11,8 +11,10 @@ import 'package:http/http.dart' as http;
 import 'package:maplibre_gl/maplibre_gl.dart';
 import 'package:polyline_codec/polyline_codec.dart';
 import 'package:slide_to_act/slide_to_act.dart';
-// --- NEW: Import for notifications ---
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+// --- NEW: Import for launching URLs ---
+import 'package:url_launcher/url_launcher.dart';
+
 
 class EmployeeJourneyScreen extends StatefulWidget {
   final Employee employee;
@@ -89,10 +91,32 @@ class _EmployeeJourneyScreenState extends State<EmployeeJourneyScreen> {
     super.dispose();
   }
 
+  // --- NEW: Function to launch Google Maps Navigation ---
+  Future<void> _launchGoogleMapsNavigation() async {
+    if (_destinationLocation == null) {
+      _showError("Destination not set.");
+      return;
+    }
+
+    final lat = _destinationLocation!.latitude;
+    final lng = _destinationLocation!.longitude;
+    final url = Uri.parse('google.navigation:q=$lat,$lng');
+
+    try {
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url);
+      } else {
+        throw 'Could not launch $url';
+      }
+    } catch (e) {
+      _showError("Could not open Google Maps. Is it installed?");
+    }
+  }
+
   // --- NEW: All notification logic is here ---
   void _initializeNotifications() async {
     const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+        AndroidInitializationSettings('@mipmap/launcher_icon');
     const DarwinInitializationSettings initializationSettingsIOS = DarwinInitializationSettings();
     const InitializationSettings initializationSettings = InitializationSettings(
         android: initializationSettingsAndroid, iOS: initializationSettingsIOS);
@@ -546,6 +570,30 @@ void _stopJourneyWithRadar() async {
                 canStart: canStartJourney,
               ),
             ),
+            
+            // --- NEW: Navigate Button, only visible when journey is active ---
+            if (_isJourneyActive)
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: 205, // Positioned above the slider
+                child: Center(
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.navigation_rounded),
+                    label: const Text('NAVIGATE'),
+                    onPressed: _launchGoogleMapsNavigation,
+                    style: ElevatedButton.styleFrom(
+                      foregroundColor: Colors.white, 
+                      backgroundColor: Colors.blueAccent.withOpacity(0.9),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(24.0),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    ),
+                  ),
+                ),
+              ),
+
           ],
         );
       },

@@ -4,7 +4,7 @@ import 'package:assetarchiverflutter/widgets/reusableglasscard.dart';
 import 'package:flutter/material.dart';
 import 'package:assetarchiverflutter/api/api_service.dart';
 import 'package:assetarchiverflutter/models/dealer_model.dart';
-// --- REMOVED: The slidable package is no longer needed ---
+import 'package:assetarchiverflutter/api/auth_service.dart'; // Ensure AuthService is imported for logout
 
 // Helper class to hold all the fetched stats in one object
 class _ProfileStats {
@@ -51,6 +51,12 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
     String firstNameInitial = widget.employee.firstName?.isNotEmpty == true ? widget.employee.firstName![0] : '';
     String lastNameInitial = widget.employee.lastName?.isNotEmpty == true ? widget.employee.lastName![0] : '';
     return (firstNameInitial + lastNameInitial).toUpperCase();
+  }
+
+  // HIGHLIGHT: ADDED A HELPER TO CAPITALIZE THE ROLE STRING
+  String _capitalize(String? s) {
+    if (s == null || s.isEmpty) return '';
+    return s[0].toUpperCase() + s.substring(1);
   }
 
   Future<_ProfileStats> _fetchProfileStats() async {
@@ -140,9 +146,13 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
                     const SizedBox(height: 4),
                     Text(widget.employee.email ?? 'No email', style: textTheme.bodyLarge?.copyWith(color: Colors.white70)),
                     const SizedBox(height: 12),
+                    // HIGHLIGHT: THIS CHIP NOW USES THE DYNAMIC ROLE FROM THE EMPLOYEE MODEL
                     Chip(
                       avatar: const Icon(Icons.work_outline, color: Colors.white70, size: 18),
-                      label: Text('Junior Executive', style: textTheme.bodyMedium?.copyWith(color: Colors.white)),
+                      label: Text(
+                        _capitalize(widget.employee.role ?? 'Employee'), // Using the dynamic role
+                        style: textTheme.bodyMedium?.copyWith(color: Colors.white)
+                      ),
                       backgroundColor: Colors.white.withAlpha(26),
                     ),
                   ],
@@ -247,7 +257,6 @@ class _ManageDealersContentState extends State<_ManageDealersContent> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Editing ${dealer.name}...')));
   }
 
-  // --- NEW: This method shows the Edit/Delete options for a dealer ---
   void _showDealerActions(Dealer dealer) {
     showModalBottomSheet(
       context: context,
@@ -264,7 +273,7 @@ class _ManageDealersContentState extends State<_ManageDealersContent> {
                 leading: const Icon(Icons.edit, color: Colors.white70),
                 title: const Text('Edit Dealer', style: TextStyle(color: Colors.white)),
                 onTap: () {
-                  Navigator.of(context).pop(); // Close this actions sheet
+                  Navigator.of(context).pop();
                   _editDealer(dealer);
                 },
               ),
@@ -272,7 +281,7 @@ class _ManageDealersContentState extends State<_ManageDealersContent> {
                 leading: const Icon(Icons.delete, color: Colors.redAccent),
                 title: const Text('Delete Dealer', style: TextStyle(color: Colors.redAccent)),
                 onTap: () {
-                  Navigator.of(context).pop(); // Close this actions sheet
+                  Navigator.of(context).pop();
                   _deleteDealer(dealer.id);
                 },
               ),
@@ -314,11 +323,9 @@ class _ManageDealersContentState extends State<_ManageDealersContent> {
                 itemCount: dealers.length,
                 itemBuilder: (context, index) {
                   final dealer = dealers[index];
-                  // --- UPDATED: Replaced Slidable with a standard ListTile ---
                   return ListTile(
                     title: Text(dealer.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     subtitle: Text(dealer.address, style: const TextStyle(color: Colors.white70)),
-                    // --- UPDATED: Changed icon and added onTap for actions ---
                     trailing: const Icon(Icons.more_vert, color: Colors.white54),
                     onTap: () => _showDealerActions(dealer),
                   );
@@ -389,8 +396,12 @@ class _LogoutButton extends StatelessWidget {
     return ElevatedButton.icon(
       icon: const Icon(Icons.logout),
       label: const Text('LOG OUT'),
-      onPressed: () {
-        Navigator.of(context).pushNamedAndRemoveUntil('/login', (Route<dynamic> route) => false);
+      onPressed: () async {
+        // This now correctly calls the logout method to clear the session
+        await AuthService().logout();
+        if (context.mounted) {
+          Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+        }
       },
       style: ElevatedButton.styleFrom(
         backgroundColor: Colors.red.withAlpha(200),

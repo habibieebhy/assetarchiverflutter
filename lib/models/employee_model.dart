@@ -5,15 +5,14 @@ String employeeToJson(Employee data) => json.encode(data.toJson());
 
 class Employee {
   final String id;
-  // UPDATED: Added fields to hold the user's full name from the profile endpoint.
   final String? firstName;
   final String? lastName;
   final String? email;
   final String? loginId;
   final String? companyName;
+  // HIGHLIGHT: ADDED THE ROLE PROPERTY
+  final String? role;
 
-  /// A computed property to get the best possible display name.
-  /// It prioritizes a full name, then falls back to first name, last name, or login ID.
   String get displayName {
     if (firstName != null && lastName != null && firstName!.isNotEmpty && lastName!.isNotEmpty) {
       return '$firstName $lastName';
@@ -28,25 +27,36 @@ class Employee {
     this.email,
     this.loginId,
     this.companyName,
+    // HIGHLIGHT: ADDED ROLE TO THE CONSTRUCTOR
+    this.role,
   });
 
-  /// This factory constructor is now robust enough to handle data from
-  /// both the /login (minimal) and /users/:id (full profile) server responses.
+  // HIGHLIGHT: THE fromJson FACTORY IS NOW SMARTER
   factory Employee.fromJson(Map<String, dynamic> json) {
+    // This logic handles both the nested structure from the profile endpoint
+    // and the flat structure from the initial login response.
+    final companyData = json['company'];
+    String? extractedCompanyName;
+    if (companyData is Map<String, dynamic>) {
+      extractedCompanyName = companyData['companyName'];
+    } else {
+      extractedCompanyName = json['companyName'];
+    }
+
     return Employee(
       id: json["id"]?.toString() ?? '',
-      // UPDATED: Now parses the first and last name fields from the profile endpoint.
       firstName: json["firstName"] as String?,
       lastName: json["lastName"] as String?,
       email: json["email"] as String?,
-      // The login response has 'salesmanLoginId', the profile endpoint might too.
       loginId: json["salesmanLoginId"] as String?,
-      // The login response provides this.
-      companyName: json["companyName"] as String?,
+      // Use the correctly extracted company name
+      companyName: extractedCompanyName,
+      // Parse the role from the JSON
+      role: json["role"] as String?,
     );
   }
 
-  // --- ADDED: The copyWith method to allow merging data from the two API calls ---
+  // HIGHLIGHT: UPDATED copyWith
   Employee copyWith({
     String? id,
     String? firstName,
@@ -54,6 +64,7 @@ class Employee {
     String? email,
     String? loginId,
     String? companyName,
+    String? role,
   }) {
     return Employee(
       id: id ?? this.id,
@@ -62,10 +73,11 @@ class Employee {
       email: email ?? this.email,
       loginId: loginId ?? this.loginId,
       companyName: companyName ?? this.companyName,
+      role: role ?? this.role,
     );
   }
 
-  /// Converts the Employee instance into a JSON map for local storage.
+  // HIGHLIGHT: UPDATED toJson
   Map<String, dynamic> toJson() => {
         "id": id,
         "firstName": firstName,
@@ -73,6 +85,7 @@ class Employee {
         "email": email,
         "loginId": loginId,
         "companyName": companyName,
+        "role": role,
       };
 }
 
