@@ -13,6 +13,8 @@ import '../models/attendance_model.dart';
 import '../models/daily_visit_report_model.dart';
 import '../models/technical_visit_report_model.dart';
 import '../models/geotracking_data_model.dart';
+import '../models/competition_report_model.dart';
+
 
 class ApiService {
   static const String _baseUrl = 'https://myserverbymycoco.onrender.com';
@@ -31,7 +33,10 @@ class ApiService {
           throw Exception(jsonData['error'] ?? 'API returned success: false');
         }
       } else {
-        throw Exception(jsonData['error'] ?? 'Failed to load data. Status: ${response.statusCode}');
+        throw Exception(
+          jsonData['error'] ??
+              'Failed to load data. Status: ${response.statusCode}',
+        );
       }
     } catch (e) {
       dev.log('API Error on GET $endpoint', error: e, name: 'ApiService');
@@ -39,15 +44,21 @@ class ApiService {
     }
   }
 
-  Future<T> _post<T>(String endpoint, Map<String, dynamic> body, T Function(dynamic json) fromJson) async {
+  Future<T> _post<T>(
+    String endpoint,
+    Map<String, dynamic> body,
+    T Function(dynamic json) fromJson,
+  ) async {
     final url = Uri.parse('$_baseUrl/api/$endpoint');
     dev.log('POST: $url', name: 'ApiService');
     try {
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json; charset=UTF-8'},
-        body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 45));
+      final response = await http
+          .post(
+            url,
+            headers: {'Content-Type': 'application/json; charset=UTF-8'},
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 45));
       final jsonData = jsonDecode(response.body);
       if (response.statusCode == 201 || response.statusCode == 200) {
         if (jsonData['success'] == true && jsonData['data'] != null) {
@@ -56,24 +67,34 @@ class ApiService {
           throw Exception(jsonData['error'] ?? 'API returned success: false');
         }
       } else {
-        final errorDetails = jsonData['details'] != null ? jsonEncode(jsonData['details']) : 'No details from server.';
-        throw Exception('${jsonData['error'] ?? 'Failed to create item'}. Details: $errorDetails');
+        final errorDetails = jsonData['details'] != null
+            ? jsonEncode(jsonData['details'])
+            : 'No details from server.';
+        throw Exception(
+          '${jsonData['error'] ?? 'Failed to create item'}. Details: $errorDetails',
+        );
       }
     } catch (e) {
       dev.log('API Error on POST $endpoint', error: e, name: 'ApiService');
       rethrow;
     }
   }
-  
-  Future<T> _patch<T>(String endpoint, Map<String, dynamic> body, T Function(dynamic json) fromJson) async {
+
+  Future<T> _patch<T>(
+    String endpoint,
+    Map<String, dynamic> body,
+    T Function(dynamic json) fromJson,
+  ) async {
     final url = Uri.parse('$_baseUrl/api/$endpoint');
     dev.log('PATCH: $url', name: 'ApiService');
     try {
-      final response = await http.patch(
-        url,
-        headers: {'Content-Type': 'application/json; charset=UTF-8'},
-        body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 45));
+      final response = await http
+          .patch(
+            url,
+            headers: {'Content-Type': 'application/json; charset=UTF-8'},
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 45));
       final jsonData = jsonDecode(response.body);
       if (response.statusCode == 200) {
         if (jsonData['success'] == true && jsonData['data'] != null) {
@@ -82,7 +103,10 @@ class ApiService {
           throw Exception(jsonData['error'] ?? 'API returned success: false');
         }
       } else {
-        throw Exception(jsonData['error'] ?? 'Failed to update item. Status: ${response.statusCode}');
+        throw Exception(
+          jsonData['error'] ??
+              'Failed to update item. Status: ${response.statusCode}',
+        );
       }
     } catch (e) {
       dev.log('API Error on PATCH $endpoint', error: e, name: 'ApiService');
@@ -94,10 +118,15 @@ class ApiService {
     final url = Uri.parse('$_baseUrl/api/$endpoint');
     dev.log('DELETE: $url', name: 'ApiService');
     try {
-      final response = await http.delete(url).timeout(const Duration(seconds: 45));
+      final response = await http
+          .delete(url)
+          .timeout(const Duration(seconds: 45));
       if (response.statusCode != 200 && response.statusCode != 204) {
         final jsonData = jsonDecode(response.body);
-        throw Exception(jsonData['error'] ?? 'Failed to delete item. Status: ${response.statusCode}');
+        throw Exception(
+          jsonData['error'] ??
+              'Failed to delete item. Status: ${response.statusCode}',
+        );
       }
     } catch (e) {
       dev.log('API Error on DELETE $endpoint', error: e, name: 'ApiService');
@@ -110,25 +139,38 @@ class ApiService {
     dev.log('POST (Multipart): $url', name: 'ApiService');
     try {
       final request = http.MultipartRequest('POST', url);
-      request.files.add(await http.MultipartFile.fromPath('file', imageFile.path));
-      final streamedResponse = await request.send().timeout(const Duration(seconds: 90));
+      request.files.add(
+        await http.MultipartFile.fromPath('file', imageFile.path),
+      );
+      final streamedResponse = await request.send().timeout(
+        const Duration(seconds: 90),
+      );
       final response = await http.Response.fromStream(streamedResponse);
       final jsonData = jsonDecode(response.body);
       if (response.statusCode == 200) {
         if (jsonData['success'] == true && jsonData['publicUrl'] != null) {
           return jsonData['publicUrl'];
         } else {
-          throw Exception(jsonData['error'] ?? 'Image upload API returned success: false');
+          throw Exception(
+            jsonData['error'] ?? 'Image upload API returned success: false',
+          );
         }
       } else {
-        throw Exception(jsonData['error'] ?? 'Failed to upload image. Status: ${response.statusCode}');
+        throw Exception(
+          jsonData['error'] ??
+              'Failed to upload image. Status: ${response.statusCode}',
+        );
       }
     } catch (e) {
-      dev.log('API Error on POST uploadImageToR2', error: e, name: 'ApiService');
+      dev.log(
+        'API Error on POST uploadImageToR2',
+        error: e,
+        name: 'ApiService',
+      );
       rethrow;
     }
   }
-  
+
   // --- NEW: GEO-TRACKING METHOD (POST) ---
   Future<void> sendGeoTrackingPoint(GeoTrackingPoint point) async {
     final url = Uri.parse('$_baseUrl/api/geotracking');
@@ -136,89 +178,146 @@ class ApiService {
     body.removeWhere((key, value) => value == null);
     dev.log('POST GeoTracking: $url', name: 'ApiService');
     try {
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json; charset=UTF-8'},
-        body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 10));
+      final response = await http
+          .post(
+            url,
+            headers: {'Content-Type': 'application/json; charset=UTF-8'},
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 10));
       if (response.statusCode != 201) {
         final jsonData = jsonDecode(response.body);
-        dev.log('GeoTracking failed: ${response.statusCode}', error: jsonData['error'] ?? response.body, name: 'ApiService');
+        dev.log(
+          'GeoTracking failed: ${response.statusCode}',
+          error: jsonData['error'] ?? response.body,
+          name: 'ApiService',
+        );
       }
     } catch (e) {
-      dev.log('GeoTracking API Error (No connectivity?): $e', name: 'ApiService');
+      dev.log(
+        'GeoTracking API Error (No connectivity?): $e',
+        name: 'ApiService',
+      );
     }
   }
 
-  Future<Map<String, String>> reverseGeocodeWithRadar({required double latitude, required double longitude}) async {
+  Future<Map<String, String>> reverseGeocodeWithRadar({
+    required double latitude,
+    required double longitude,
+  }) async {
     final radarApiKey = dotenv.env['RADAR_API_KEY'];
-    if (radarApiKey == null) throw Exception('RADAR_API_KEY not found in .env file');
-    final url = Uri.https('api.radar.io', '/v1/geocode/reverse', {'coordinates': '$latitude,$longitude'});
+    if (radarApiKey == null) {
+      throw Exception('RADAR_API_KEY not found in .env file');
+    }
+    final url = Uri.https('api.radar.io', '/v1/geocode/reverse', {
+      'coordinates': '$latitude,$longitude',
+    });
     dev.log('GET: $url', name: 'RadarApiService');
     try {
-      final response = await http.get(url, headers: {'Authorization': radarApiKey}).timeout(const Duration(seconds: 15));
+      final response = await http
+          .get(url, headers: {'Authorization': radarApiKey})
+          .timeout(const Duration(seconds: 15));
       final jsonData = jsonDecode(response.body);
       if (response.statusCode == 200) {
-        if (jsonData['addresses'] != null && (jsonData['addresses'] as List).isNotEmpty) {
+        if (jsonData['addresses'] != null &&
+            (jsonData['addresses'] as List).isNotEmpty) {
           final firstResult = jsonData['addresses'][0];
           return {
             'address': firstResult['formattedAddress'] ?? 'Unknown Address',
             'region': firstResult['city'] ?? 'Unknown Region',
-            'area': firstResult['neighborhood'] ?? firstResult['county'] ?? 'Unknown Area',
+            'area':
+                firstResult['neighborhood'] ??
+                firstResult['county'] ??
+                'Unknown Area',
             'pinCode': firstResult['postalCode'] ?? '',
           };
         } else {
           throw Exception('Could not determine address from coordinates.');
         }
       } else {
-        throw Exception(jsonData['meta']?['message'] ?? 'Failed to reverse geocode.');
+        throw Exception(
+          jsonData['meta']?['message'] ?? 'Failed to reverse geocode.',
+        );
       }
     } catch (e) {
-      dev.log('Radar API Error on reverseGeocodeWithRadar', error: e, name: 'RadarApiService');
+      dev.log(
+        'Radar API Error on reverseGeocodeWithRadar',
+        error: e,
+        name: 'RadarApiService',
+      );
       rethrow;
     }
   }
 
   // --- DEALER METHODS ---
-  Future<List<Dealer>> fetchDealers({String? region, String? area, String? type, int? userId}) async {
+  Future<List<Dealer>> fetchDealers({
+    String? region,
+    String? area,
+    String? type,
+    int? userId,
+  }) async {
     final queryParams = <String, String>{
       if (region != null) 'region': region,
       if (area != null) 'area': area,
       if (type != null) 'type': type,
       if (userId != null) 'userId': userId.toString(),
     };
-    final endpoint = Uri(path: 'dealers', queryParameters: queryParams.isEmpty ? null : queryParams).toString();
-    return _get(endpoint, (json) => (json as List).map((item) => Dealer.fromJson(item)).toList());
+    final endpoint = Uri(
+      path: 'dealers',
+      queryParameters: queryParams.isEmpty ? null : queryParams,
+    ).toString();
+    return _get(
+      endpoint,
+      (json) => (json as List).map((item) => Dealer.fromJson(item)).toList(),
+    );
   }
 
   Future<Dealer> fetchDealerById(String dealerId) {
     return _get('dealers/$dealerId', (json) => Dealer.fromJson(json));
   }
 
-  Future<Dealer> createDealer(Dealer dealer, {required double latitude, required double longitude}) async {
+  Future<Dealer> createDealer(
+    Dealer dealer, {
+    required double latitude,
+    required double longitude,
+  }) async {
     final body = dealer.toJson();
     body['latitude'] = latitude.toString();
     body['longitude'] = longitude.toString();
     return _post('dealers', body, (json) => Dealer.fromJson(json));
   }
-  
-  Future<Dealer> updateDealer(String dealerId, Map<String, dynamic> data) async {
+
+  Future<Dealer> updateDealer(
+    String dealerId,
+    Map<String, dynamic> data,
+  ) async {
     return _patch('dealers/$dealerId', data, (json) => Dealer.fromJson(json));
   }
 
   Future<void> deleteDealer(String dealerId) => _delete('dealers/$dealerId');
 
   // --- OTHER METHODS ---
-  Future<List<Pjp>> fetchPjpsForUser(int userId, {String? startDate, String? endDate, String? status}) async {
+  Future<List<Pjp>> fetchPjpsForUser(
+    int userId, {
+    String? startDate,
+    String? endDate,
+    String? status,
+  }) async {
     final queryParams = <String, String>{
       if (startDate != null) 'startDate': startDate,
       if (endDate != null) 'endDate': endDate,
       if (status != null) 'status': status,
     };
-    final endpoint = Uri(path: 'pjp/user/$userId', queryParameters: queryParams.isEmpty ? null : queryParams).toString();
-    return _get(endpoint, (json) => (json as List).map((item) => Pjp.fromJson(item)).toList());
+    final endpoint = Uri(
+      path: 'pjp/user/$userId',
+      queryParameters: queryParams.isEmpty ? null : queryParams,
+    ).toString();
+    return _get(
+      endpoint,
+      (json) => (json as List).map((item) => Pjp.fromJson(item)).toList(),
+    );
   }
-  
+
   Future<Pjp> createPjp(Pjp pjp) async {
     return _post('pjp', pjp.toJson(), (json) => Pjp.fromJson(json));
   }
@@ -226,91 +325,197 @@ class ApiService {
   Future<Pjp> updatePjp(String pjpId, Map<String, dynamic> data) async {
     return _patch('pjp/$pjpId', data, (json) => Pjp.fromJson(json));
   }
-  
+
   Future<void> deletePjp(String pjpId) => _delete('pjp/$pjpId');
-  
-  Future<List<DailyTask>> fetchDailyTasksForUser(int userId, {String? startDate, String? endDate, String? status}) async {
+
+  Future<List<DailyTask>> fetchDailyTasksForUser(
+    int userId, {
+    String? startDate,
+    String? endDate,
+    String? status,
+  }) async {
     final queryParams = <String, String>{
       if (startDate != null) 'startDate': startDate,
       if (endDate != null) 'endDate': endDate,
       if (status != null) 'status': status,
     };
-    final endpoint = Uri(path: 'daily-tasks/user/$userId', queryParameters: queryParams.isEmpty ? null : queryParams).toString();
-    return _get(endpoint, (json) => (json as List).map((item) => DailyTask.fromJson(item)).toList());
+    final endpoint = Uri(
+      path: 'daily-tasks/user/$userId',
+      queryParameters: queryParams.isEmpty ? null : queryParams,
+    ).toString();
+    return _get(
+      endpoint,
+      (json) => (json as List).map((item) => DailyTask.fromJson(item)).toList(),
+    );
   }
 
-  Future<List<LeaveApplication>> fetchLeaveApplicationsForUser(int userId, {String? startDate, String? endDate, String? status}) async {
+  Future<List<LeaveApplication>> fetchLeaveApplicationsForUser(
+    int userId, {
+    String? startDate,
+    String? endDate,
+    String? status,
+  }) async {
     final queryParams = <String, String>{
       if (startDate != null) 'startDate': startDate,
       if (endDate != null) 'endDate': endDate,
       if (status != null) 'status': status,
     };
-    final endpoint = Uri(path: 'leave-applications/user/$userId', queryParameters: queryParams.isEmpty ? null : queryParams).toString();
-    return _get(endpoint, (json) => (json as List).map((item) => LeaveApplication.fromJson(item)).toList());
+    final endpoint = Uri(
+      path: 'leave-applications/user/$userId',
+      queryParameters: queryParams.isEmpty ? null : queryParams,
+    ).toString();
+    return _get(
+      endpoint,
+      (json) => (json as List)
+          .map((item) => LeaveApplication.fromJson(item))
+          .toList(),
+    );
   }
 
-  Future<List<Attendance>> fetchAttendanceForUser(int userId, {String? startDate, String? endDate}) async {
+  Future<List<Attendance>> fetchAttendanceForUser(
+    int userId, {
+    String? startDate,
+    String? endDate,
+  }) async {
     final queryParams = <String, String>{
       if (startDate != null) 'startDate': startDate,
       if (endDate != null) 'endDate': endDate,
     };
-    final endpoint = Uri(path: 'attendance/user/$userId', queryParameters: queryParams.isEmpty ? null : queryParams).toString();
-    return _get(endpoint, (json) => (json as List).map((item) => Attendance.fromJson(item)).toList());
+    final endpoint = Uri(
+      path: 'attendance/user/$userId',
+      queryParameters: queryParams.isEmpty ? null : queryParams,
+    ).toString();
+    return _get(
+      endpoint,
+      (json) =>
+          (json as List).map((item) => Attendance.fromJson(item)).toList(),
+    );
   }
-  
+
   Future<Attendance> fetchTodaysAttendance(int userId) {
-    return _get('attendance/user/$userId/today', (json) => Attendance.fromJson(json));
+    return _get(
+      'attendance/user/$userId/today',
+      (json) => Attendance.fromJson(json),
+    );
   }
-  
-  Future<List<DailyVisitReport>> fetchDvrsForUser(int userId, {String? startDate, String? endDate, String? dealerType, String? visitType}) async {
+
+  Future<List<DailyVisitReport>> fetchDvrsForUser(
+    int userId, {
+    String? startDate,
+    String? endDate,
+    String? dealerType,
+    String? visitType,
+  }) async {
     final queryParams = <String, String>{
       if (startDate != null) 'startDate': startDate,
       if (endDate != null) 'endDate': endDate,
       if (dealerType != null) 'dealerType': dealerType,
       if (visitType != null) 'visitType': visitType,
     };
-    final endpoint = Uri(path: 'daily-visit-reports/user/$userId', queryParameters: queryParams.isEmpty ? null : queryParams).toString();
-    return _get(endpoint, (json) => (json as List).map((item) => DailyVisitReport.fromJson(item)).toList());
+    final endpoint = Uri(
+      path: 'daily-visit-reports/user/$userId',
+      queryParameters: queryParams.isEmpty ? null : queryParams,
+    ).toString();
+    return _get(
+      endpoint,
+      (json) => (json as List)
+          .map((item) => DailyVisitReport.fromJson(item))
+          .toList(),
+    );
   }
-  
-  Future<List<TechnicalVisitReport>> fetchTvrsForUser(int userId, {String? startDate, String? endDate, String? visitType, String? serviceType}) async {
+
+  Future<List<TechnicalVisitReport>> fetchTvrsForUser(
+    int userId, {
+    String? startDate,
+    String? endDate,
+    String? visitType,
+    String? serviceType,
+  }) async {
     final queryParams = <String, String>{
       if (startDate != null) 'startDate': startDate,
       if (endDate != null) 'endDate': endDate,
       if (visitType != null) 'visitType': visitType,
       if (serviceType != null) 'serviceType': serviceType,
     };
-    final endpoint = Uri(path: 'technical-visit-reports/user/$userId', queryParameters: queryParams.isEmpty ? null : queryParams).toString();
-    return _get(endpoint, (json) => (json as List).map((item) => TechnicalVisitReport.fromJson(item)).toList());
+    final endpoint = Uri(
+      path: 'technical-visit-reports/user/$userId',
+      queryParameters: queryParams.isEmpty ? null : queryParams,
+    ).toString();
+    return _get(
+      endpoint,
+      (json) => (json as List)
+          .map((item) => TechnicalVisitReport.fromJson(item))
+          .toList(),
+    );
   }
-  
+
   Future<Attendance> checkIn(Map<String, dynamic> checkInData) async {
-    return _post('attendance/check-in', checkInData, (json) => Attendance.fromJson(json));
+    return _post(
+      'attendance/check-in',
+      checkInData,
+      (json) => Attendance.fromJson(json),
+    );
   }
-  
+
   Future<Attendance> checkOut(Map<String, dynamic> checkOutData) async {
-    return _post('attendance/check-out', checkOutData, (json) => Attendance.fromJson(json));
+    return _post(
+      'attendance/check-out',
+      checkOutData,
+      (json) => Attendance.fromJson(json),
+    );
   }
 
   Future<DailyTask> createDailyTask(DailyTask task) async {
-    return _post('daily-tasks', task.toJson(), (json) => DailyTask.fromJson(json));
+    return _post(
+      'daily-tasks',
+      task.toJson(),
+      (json) => DailyTask.fromJson(json),
+    );
   }
 
   Future<DailyVisitReport> createDvr(DailyVisitReport dvr) async {
-    return _post('daily-visit-reports', dvr.toJson(), (json) => DailyVisitReport.fromJson(json));
+    return _post(
+      'daily-visit-reports',
+      dvr.toJson(),
+      (json) => DailyVisitReport.fromJson(json),
+    );
   }
 
   Future<TechnicalVisitReport> createTvr(TechnicalVisitReport tvr) async {
-    return _post('technical-visit-reports', tvr.toJson(), (json) => TechnicalVisitReport.fromJson(json));
+    return _post(
+      'technical-visit-reports',
+      tvr.toJson(),
+      (json) => TechnicalVisitReport.fromJson(json),
+    );
   }
 
-  Future<LeaveApplication> createLeaveApplication(LeaveApplication leaveApp) async {
-    return _post('leave-applications', leaveApp.toJson(), (json) => LeaveApplication.fromJson(json));
+  Future<LeaveApplication> createLeaveApplication(
+    LeaveApplication leaveApp,
+  ) async {
+    return _post(
+      'leave-applications',
+      leaveApp.toJson(),
+      (json) => LeaveApplication.fromJson(json),
+    );
   }
-  
+
+  Future<CompetitionReport> createCompetitionReport(
+    CompetitionReport report,
+  ) async {
+    return _post(
+      'competition-reports',
+      report.toJson(),
+      (json) => CompetitionReport.fromJson(json),
+    );
+  }
+  // In api_service.dart
+
   Future<void> deleteDailyTask(String taskId) => _delete('daily-tasks/$taskId');
   Future<void> deleteDvr(String dvrId) => _delete('daily-visit-reports/$dvrId');
-  Future<void> deleteTvr(String tvrId) => _delete('technical-visit-reports/$tvrId');
-  Future<void> deleteLeaveApplication(String leaveId) => _delete('leave-applications/$leaveId');
-  Future<void> deleteSalesOrder(String orderId) => _delete('sales-orders/$orderId');
+  Future<void> deleteTvr(String tvrId) =>
+      _delete('technical-visit-reports/$tvrId');
+  Future<void> deleteLeaveApplication(String leaveId) =>
+      _delete('leave-applications/$leaveId');
+  Future<void> deleteSalesOrder(String orderId) =>
+      _delete('sales-orders/$orderId');
 }

@@ -1,3 +1,4 @@
+// lib/screens/employee_management/employee_pjp_screen.dart
 import 'package:assetarchiverflutter/models/employee_model.dart';
 import 'package:assetarchiverflutter/widgets/reusableglasscard.dart';
 import 'package:flutter/material.dart';
@@ -41,6 +42,18 @@ class EmployeePJPScreenState extends State<EmployeePJPScreen> {
     }
   }
 
+  // --- NEW: A dedicated refresh handler for the RefreshIndicator ---
+  Future<void> _handleRefresh() async {
+    final newPjpFuture = _apiService.fetchPjpsForUser(int.parse(widget.employee.id), status: 'pending');
+    if (mounted) {
+      setState(() {
+        _pjpFuture = newPjpFuture;
+      });
+    }
+    // Awaiting the future makes the refresh indicator spin until data is loaded
+    await newPjpFuture;
+  }
+
   void _handlePjpCreation() {
     refreshPjpList();
     widget.onPjpCreated();
@@ -51,7 +64,7 @@ class EmployeePJPScreenState extends State<EmployeePJPScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _AddPjpForm(
+      builder: (_) => AddPjpForm(
         employee: widget.employee,
         onPjpCreated: _handlePjpCreation,
       ),
@@ -71,7 +84,7 @@ class EmployeePJPScreenState extends State<EmployeePJPScreen> {
       if (lat == null || lon == null) throw const FormatException('Could not parse coordinates from PJP.');
 
       await _apiService.updatePjp(pjp.id, {'status': 'started'});
-      scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Journey Planned now redirecting..!'), backgroundColor: Colors.green));
+      scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Journey Planned, redirecting...'), backgroundColor: Colors.green));
       
       refreshPjpList();
       widget.onPjpCreated(); 
@@ -93,29 +106,41 @@ class EmployeePJPScreenState extends State<EmployeePJPScreen> {
     return Stack(
       children: [
         Container(
-          color: const Color(0xFF0D47A1),
-          child: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFF0D47A1), Color.fromARGB(255, 2, 10, 103)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF0D47A1), Color.fromARGB(255, 2, 10, 103)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-            child: FutureBuilder<List<Pjp>>(
-              future: _pjpFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator(color: Colors.white));
-                }
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.yellow)));
-                }
-                if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return const Center(child: Text('No PJPs to visit.', style: TextStyle(color: Colors.white70)));
-                }
-                final pjpList = snapshot.data!;
-                return ListView.builder(
+          ),
+          child: FutureBuilder<List<Pjp>>(
+            future: _pjpFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator(color: Colors.white));
+              }
+              if (snapshot.hasError) {
+                return Center(child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.yellow)));
+              }
+              if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                // Also wrap this in a RefreshIndicator for an empty state
+                return RefreshIndicator(
+                  onRefresh: _handleRefresh,
+                  child: Stack(
+                    children: [
+                      ListView(), // Needed for RefreshIndicator to work
+                      const Center(child: Text('No PJPs to visit.', style: TextStyle(color: Colors.white70))),
+                    ],
+                  ),
+                );
+              }
+              final pjpList = snapshot.data!;
+              // --- UPDATED: Wrapped ListView.builder in a RefreshIndicator ---
+              return RefreshIndicator(
+                onRefresh: _handleRefresh,
+                color: Colors.white,
+                backgroundColor: Theme.of(context).primaryColor,
+                child: ListView.builder(
                   padding: EdgeInsets.only(top: kToolbarHeight + MediaQuery.of(context).padding.top, bottom: 80),
                   itemCount: pjpList.length,
                   itemBuilder: (context, index) {
@@ -141,9 +166,9 @@ class EmployeePJPScreenState extends State<EmployeePJPScreen> {
                       ),
                     );
                   },
-                );
-              },
-            ),
+                ),
+              );
+            },
           ),
         ),
         Positioned(
@@ -158,6 +183,8 @@ class EmployeePJPScreenState extends State<EmployeePJPScreen> {
     );
   }
 }
+
+// All widgets below this line remain completely unchanged.
 
 class _PjpCard extends StatelessWidget {
   final Pjp pjp;
@@ -186,15 +213,15 @@ class _PjpCard extends StatelessWidget {
   }
 }
 
-class _AddPjpForm extends StatefulWidget {
+class AddPjpForm extends StatefulWidget {
   final Employee employee;
   final VoidCallback onPjpCreated;
-  const _AddPjpForm({required this.employee, required this.onPjpCreated});
+  const AddPjpForm({super.key, required this.employee, required this.onPjpCreated});
   @override
-  State<_AddPjpForm> createState() => _AddPjpFormState();
+  State<AddPjpForm> createState() => AddPjpFormState();
 }
 
-class _AddPjpFormState extends State<_AddPjpForm> {
+class AddPjpFormState extends State<AddPjpForm> {
   final _formKey = GlobalKey<FormState>();
   final ApiService _apiService = ApiService();
   
@@ -236,16 +263,6 @@ class _AddPjpFormState extends State<_AddPjpForm> {
       final String displayName = '${dealer.name}, ${dealer.address}';
       final String visitData = '$displayName|${dealer.latitude}|${dealer.longitude}';
 
-      // --- DEBUGGING LINES ADDED ---
-      debugPrint('--- DEBUG: Preparing to create PJP ---');
-      debugPrint('Dealer Name: ${dealer.name}');
-      debugPrint('Dealer Address: ${dealer.address}');
-      debugPrint('Dealer Lat: ${dealer.latitude}');
-      debugPrint('Dealer Lng: ${dealer.longitude}');
-      debugPrint('Final constructed string (areaToBeVisited): "$visitData"');
-      debugPrint('------------------------------------');
-      // --- END DEBUGGING LINES ---
-
       final newPjp = Pjp(
         id: '',
         planDate: DateTime.now(),
@@ -253,7 +270,8 @@ class _AddPjpFormState extends State<_AddPjpForm> {
         createdById: int.parse(widget.employee.id),
         status: 'pending',
         areaToBeVisited: visitData,
-        description: _descriptionController.text,
+        description: _descriptionController.text.isNotEmpty ? _descriptionController.text : null,
+        dealerName: dealer.name,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
       );
@@ -264,8 +282,7 @@ class _AddPjpFormState extends State<_AddPjpForm> {
       scaffoldMessenger.showSnackBar(const SnackBar(content: Text('PJP Created!'), backgroundColor: Colors.green));
 
     } catch (e) {
-      debugPrint('--- FAILED TO CREATE PJP ---');
-      debugPrint('Error: $e');
+      debugPrint('--- FAILED TO CREATE PJP ---\nError: $e');
       scaffoldMessenger.showSnackBar(SnackBar(content: Text('Failed to create PJP: $e'), backgroundColor: Colors.red));
     } finally {
       if(mounted) setState(() => _isSubmitting = false);
@@ -294,17 +311,19 @@ class _AddPjpFormState extends State<_AddPjpForm> {
                 future: _dealersFuture,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+                  if (snapshot.hasError) return Text('Error loading dealers: ${snapshot.error}', style: const TextStyle(color: Colors.red));
                   if (!snapshot.hasData || snapshot.data!.isEmpty) return const Text('No dealers found for this user.', style: TextStyle(color: Colors.white70));
                   
                   return DropdownButtonFormField<Dealer>(
                     hint: const Text('Select a Dealer', style: TextStyle(color: Colors.white70)),
+                    isExpanded: true,
                     dropdownColor: const Color(0xFF0D47A1),
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       enabledBorder: OutlineInputBorder(borderSide: const BorderSide(color: Colors.white30), borderRadius: BorderRadius.circular(12)),
                     ),
-                    items: snapshot.data!.map((dealer) => DropdownMenuItem(value: dealer, child: Text(dealer.name))).toList(),
+                    items: snapshot.data!.map((dealer) => DropdownMenuItem(value: dealer, child: Text(dealer.name, overflow: TextOverflow.ellipsis,))).toList(),
                     onChanged: (value) => setState(() => _selectedDealer = value),
                     validator: (value) => value == null ? 'Please select a dealer' : null,
                   );

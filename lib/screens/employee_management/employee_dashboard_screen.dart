@@ -34,19 +34,17 @@ class EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> with W
     WidgetsBinding.instance.addObserver(this);
 
     _setGreeting();
-    refreshData(); // Also update this call
+    refreshData();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
-      refreshData(); // Also update this call
+      refreshData();
     }
   }
-  
-  // --- FIX: Renamed this method from 'refreshPjps' to 'refreshData' ---
-  // This method is now public so NavScreen can call it.
+
   void refreshData() {
     if (mounted) {
       setState(() {
@@ -56,6 +54,23 @@ class EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> with W
         );
       });
     }
+  }
+
+  // --- NEW: A dedicated refresh handler for the RefreshIndicator ---
+  // This ensures the indicator's spinner waits for the data to be fetched.
+  Future<void> _handleRefresh() async {
+    // We create a new future here and assign it within setState
+    final newPjpFuture = _apiService.fetchPjpsForUser(
+      int.parse(widget.employee.id),
+      status: 'pending',
+    );
+    if (mounted) {
+      setState(() {
+        _pjpFuture = newPjpFuture;
+      });
+    }
+    // Awaiting the future here makes the refresh indicator spin until data is loaded
+    await newPjpFuture;
   }
 
   @override
@@ -223,104 +238,113 @@ class EmployeeDashboardScreenState extends State<EmployeeDashboardScreen> with W
           ),
         ),
         child: SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.all(16.0),
-            children: [
-              LiquidGlassCard(
-                child: Column(
-                  children: [
-                    Text(_greeting, style: textTheme.bodyLarge?.copyWith(color: Colors.white70)),
-                    const SizedBox(height: 4),
-                    Text(
-                      widget.employee.displayName,
-                      style: textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.white),
-                      textAlign: TextAlign.center,
-                    ),
-                    if (widget.employee.companyName != null && widget.employee.companyName!.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4.0),
-                        child: Text(
-                          widget.employee.companyName!,
-                          style: textTheme.bodyMedium?.copyWith(color: Colors.white70),
+          // --- UPDATED: Wrapped the ListView in a RefreshIndicator ---
+          child: RefreshIndicator(
+            onRefresh: _handleRefresh,
+            color: Colors.white,
+            backgroundColor: theme.primaryColor,
+            child: ListView(
+              padding: const EdgeInsets.all(16.0),
+              children: [
+                LiquidGlassCard(
+                  child: Column(
+                    children: [
+                      Text(_greeting, style: textTheme.bodyLarge?.copyWith(color: Colors.white70)),
+                      const SizedBox(height: 4),
+                      Text(
+                        widget.employee.displayName,
+                        style: textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold, color: Colors.white),
+                        textAlign: TextAlign.center,
+                      ),
+                      if (widget.employee.companyName != null && widget.employee.companyName!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4.0),
+                          child: Text(
+                            widget.employee.companyName!,
+                            style: textTheme.bodyMedium?.copyWith(color: Colors.white70),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                LiquidGlassCard(
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          icon: _isCheckingIn ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.login, size: 18),
+                          label: const Text('Check In'),
+                          onPressed: _isCheckingIn || _isCheckingOut ? null : _handleCheckIn,
                         ),
                       ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              LiquidGlassCard(
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        icon: _isCheckingIn ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.login, size: 18),
-                        label: const Text('Check In'),
-                        onPressed: _isCheckingIn || _isCheckingOut ? null : _handleCheckIn,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        icon: _isCheckingOut ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.logout, size: 18),
-                        label: const Text('Check Out'),
-                        onPressed: _isCheckingIn || _isCheckingOut ? null : _handleCheckOut,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              FutureBuilder<List<Pjp>>(
-                future: _pjpFuture,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const LiquidGlassCard(
-                      child: Center(
-                        child: Padding(padding: EdgeInsets.all(32.0), child: CircularProgressIndicator(color: Colors.white)),
-                      ),
-                    );
-                  }
-                  
-                  if (snapshot.hasError) {
-                    return LiquidGlassCard(
-                      child: Center(child: Text('Error fetching PJPs: ${snapshot.error}', style: const TextStyle(color: Colors.yellowAccent))),
-                    );
-                  }
-
-                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                    return LiquidGlassCard(
-                       child: Padding(
-                         padding: const EdgeInsets.all(16.0),
-                         child: Center(child: Text('No active PJPs found.', style: TextStyle(color: Colors.white70))),
-                       ),
-                    );
-                  }
-
-                  final pjps = snapshot.data!;
-
-                  return LiquidGlassCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          "Active & Upcomin' PJPs (${pjps.length})",
-                          style: textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: Colors.white),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          icon: _isCheckingOut ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.logout, size: 18),
+                          label: const Text('Check Out'),
+                          onPressed: _isCheckingIn || _isCheckingOut ? null : _handleCheckOut,
                         ),
-                        const SizedBox(height: 16),
-                        ...pjps.map((pjp) => ListTile(
-                              leading: const Icon(Icons.route, color: Colors.white70),
-                              title: Text('Plan for: ${pjp.planDate.toLocal().toString().split(' ')[0]}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                              subtitle: Text('Status: ${pjp.status}', style: const TextStyle(color: Colors.white70)),
-                            )),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ]
-                .animate(interval: 100.ms)
-                .fadeIn(duration: 500.ms)
-                .slideY(begin: 0.3),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                FutureBuilder<List<Pjp>>(
+                  future: _pjpFuture,
+                  builder: (context, snapshot) {
+                    // While refreshing, the old data (if any) is still visible, which is good UX.
+                    // The indicator provides the loading feedback.
+                    // We only show a centered loader on the very first load.
+                    if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+                      return const LiquidGlassCard(
+                        child: Center(
+                          child: Padding(padding: EdgeInsets.all(32.0), child: CircularProgressIndicator(color: Colors.white)),
+                        ),
+                      );
+                    }
+                    
+                    if (snapshot.hasError) {
+                      return LiquidGlassCard(
+                        child: Center(child: Text('Error fetching PJPs: ${snapshot.error}', style: const TextStyle(color: Colors.yellowAccent))),
+                      );
+                    }
+
+                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                      return LiquidGlassCard(
+                         child: Padding(
+                           padding: const EdgeInsets.all(16.0),
+                           child: Center(child: Text('No active PJPs found.', style: TextStyle(color: Colors.white70))),
+                         ),
+                      );
+                    }
+
+                    final pjps = snapshot.data!;
+
+                    return LiquidGlassCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "Active & Upcoming PJPs (${pjps.length})",
+                            style: textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: Colors.white),
+                          ),
+                          const SizedBox(height: 16),
+                          ...pjps.map((pjp) => ListTile(
+                                leading: const Icon(Icons.route, color: Colors.white70),
+                                title: Text('Plan for: ${pjp.planDate.toLocal().toString().split(' ')[0]}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                subtitle: Text('Status: ${pjp.status}', style: const TextStyle(color: Colors.white70)),
+                              )),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ]
+                  .animate(interval: 100.ms)
+                  .fadeIn(duration: 500.ms)
+                  .slideY(begin: 0.3),
+            ),
           ),
         ),
       ),

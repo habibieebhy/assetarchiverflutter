@@ -1,52 +1,55 @@
 // file: lib/models/leave_application_model.dart
+import 'dart:convert';
+
+LeaveApplication leaveApplicationFromJson(String str) => LeaveApplication.fromJson(json.decode(str));
+String leaveApplicationToJson(LeaveApplication data) => json.encode(data.toJson());
 
 class LeaveApplication {
-  final String id;
+  final String? id;
   final int userId;
   final String leaveType;
   final DateTime startDate;
   final DateTime endDate;
-  final String? reason;
+  final String reason;
   final String status;
-  final DateTime createdAt;
-  final DateTime updatedAt;
+  final String? adminRemarks;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
 
   LeaveApplication({
-    required this.id,
+    this.id,
     required this.userId,
     required this.leaveType,
     required this.startDate,
     required this.endDate,
-    this.reason,
+    required this.reason,
     required this.status,
-    required this.createdAt,
-    required this.updatedAt,
+    this.adminRemarks,
+    this.createdAt,
+    this.updatedAt,
   });
 
-  factory LeaveApplication.fromJson(Map<String, dynamic> json) {
-    return LeaveApplication(
-      id: json['id'],
-      userId: json['userId'],
-      leaveType: json['leaveType'],
-      startDate: DateTime.parse(json['startDate']),
-      endDate: DateTime.parse(json['endDate']),
-      reason: json['reason'],
-      status: json['status'],
-      createdAt: DateTime.parse(json['createdAt']),
-      updatedAt: DateTime.parse(json['updatedAt']),
-    );
-  }
+  factory LeaveApplication.fromJson(Map<String, dynamic> json) => LeaveApplication(
+        id: json["id"],
+        userId: json["userId"],
+        leaveType: json["leaveType"],
+        startDate: DateTime.parse(json["startDate"]),
+        endDate: DateTime.parse(json["endDate"]),
+        reason: json["reason"],
+        status: json["status"],
+        adminRemarks: json["adminRemarks"],
+        createdAt: json["createdAt"] == null ? null : DateTime.parse(json["createdAt"]),
+        updatedAt: json["updatedAt"] == null ? null : DateTime.parse(json["updatedAt"]),
+      );
 
-  // --- THIS IS THE MISSING PART ---
-  /// Converts the LeaveApplication object into a Map for creating a new application.
-  Map<String, dynamic> toJson() {
-    return {
-      'userId': userId,
-      'leaveType': leaveType,
-      'startDate': startDate.toIso8601String(),
-      'endDate': endDate.toIso8601String(),
-      'reason': reason,
-      'status': status,
-    };
-  }
+  /// Converts the object into a Map for creating a new application.
+  /// Note: id, adminRemarks, createdAt, and updatedAt are omitted as they are handled by the server.
+  Map<String, dynamic> toJson() => {
+        "userId": userId,
+        "leaveType": leaveType,
+        "startDate": startDate.toIso8601String(),
+        "endDate": endDate.toIso8601String(),
+        "reason": reason,
+        "status": status, // Status is required by the server, e.g., "Pending"
+      };
 }
