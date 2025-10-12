@@ -313,11 +313,6 @@ class _NavScreenState extends State<NavScreen> {
             ),
             _buildDrawerActionItem(
               context,
-              icon: Icons.shopping_cart,
-              text: 'MODIFY SALES ORDER',
-            ),
-            _buildDrawerActionItem(
-              context,
               icon: Icons.account_box_sharp,
               text: 'APPLY FOR LEAVE',
               onTap: () => _showApplyForLeaveDialog(context, employee),
@@ -365,9 +360,14 @@ class _AddDealerForm extends StatefulWidget {
 }
 
 class _AddDealerFormState extends State<_AddDealerForm> {
+  // Form and State Management
   final _formKey = GlobalKey<FormState>();
   final _apiService = ApiService();
   bool _isSubmitting = false;
+  bool _isLoadingDealers = true;
+  bool _isFetchingLocation = false;
+
+  // Controllers for Form Fields
   final _nameController = TextEditingController();
   final _regionController = TextEditingController();
   final _areaController = TextEditingController();
@@ -379,13 +379,15 @@ class _AddDealerFormState extends State<_AddDealerForm> {
   final _brandSellingController = TextEditingController();
   final _feedbacksController = TextEditingController();
   final _remarksController = TextEditingController();
+
+  // Data for Dropdowns and Switches
   String? _selectedType;
   bool _isSubDealer = false;
   List<Dealer> _parentDealers = [];
   Dealer? _selectedParentDealer;
-  bool _isLoadingDealers = true;
+
+  // Location Data
   Position? _currentPosition;
-  bool _isFetchingLocation = false;
 
   @override
   void initState() {
@@ -395,6 +397,7 @@ class _AddDealerFormState extends State<_AddDealerForm> {
 
   @override
   void dispose() {
+    // Dispose all controllers to prevent memory leaks
     _nameController.dispose();
     _regionController.dispose();
     _areaController.dispose();
@@ -409,11 +412,13 @@ class _AddDealerFormState extends State<_AddDealerForm> {
     super.dispose();
   }
 
+  /// Fetches main dealers to act as potential parent dealers for sub-dealers.
   Future<void> _fetchParentDealers() async {
     try {
       final allDealers = await _apiService.fetchDealers(
         userId: int.tryParse(widget.employee.id),
       );
+      // A parent dealer is a dealer that doesn't have a parent itself
       final mainDealers = allDealers
           .where((d) => d.parentDealerId == null)
           .toList();
@@ -436,14 +441,17 @@ class _AddDealerFormState extends State<_AddDealerForm> {
     }
   }
 
+  /// Gets the device's current location and uses reverse geocoding to populate address fields.
   Future<void> _fetchLocationAndAddress() async {
     setState(() => _isFetchingLocation = true);
     final scaffoldMessenger = ScaffoldMessenger.of(context);
 
     try {
+      // 1. Check if location services are enabled
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) throw Exception('Location services are disabled.');
 
+      // 2. Check and request location permissions
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
@@ -456,14 +464,18 @@ class _AddDealerFormState extends State<_AddDealerForm> {
         throw Exception('Location permissions are permanently denied.');
       }
 
+      // 3. Get the current position with high accuracy
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
+
+      // 4. Use the coordinates to get address details from the API
       final addressDetails = await _apiService.reverseGeocodeWithRadar(
         latitude: position.latitude,
         longitude: position.longitude,
       );
 
+      // 5. Update the UI with the fetched data
       if (mounted) {
         setState(() {
           _currentPosition = position;
@@ -484,25 +496,9 @@ class _AddDealerFormState extends State<_AddDealerForm> {
     }
   }
 
-  InputDecoration _inputDecoration(String label, {bool readOnly = false}) {
-    return InputDecoration(
-      labelText: label,
-      labelStyle: const TextStyle(color: Colors.white70),
-      fillColor: readOnly ? Colors.white10 : Colors.transparent,
-      filled: readOnly,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-      enabledBorder: OutlineInputBorder(
-        borderSide: const BorderSide(color: Colors.white30),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderSide: const BorderSide(color: Colors.white),
-        borderRadius: BorderRadius.circular(12),
-      ),
-    );
-  }
-
+  /// Validates and submits the form data to create a new dealer.
   Future<void> _submitForm() async {
+    // Pre-submission checks
     if (_currentPosition == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -517,7 +513,7 @@ class _AddDealerFormState extends State<_AddDealerForm> {
     if (_isSubDealer && _selectedParentDealer == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please select a parent dealer.'),
+          content: Text('Please select a parent dealer for the sub-dealer.'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -529,8 +525,9 @@ class _AddDealerFormState extends State<_AddDealerForm> {
     final navigator = Navigator.of(context);
 
     try {
+      // Construct the Dealer object from form controllers
       final newDealer = Dealer(
-        id: '',
+        id: '', // ID is generated by the server
         userId: int.parse(widget.employee.id),
         type: _selectedType!,
         parentDealerId: _isSubDealer ? _selectedParentDealer!.id : null,
@@ -557,6 +554,7 @@ class _AddDealerFormState extends State<_AddDealerForm> {
         updatedAt: DateTime.now(),
       );
 
+      // Send the new dealer and its location to the API
       await _apiService.createDealer(
         newDealer,
         latitude: _currentPosition!.latitude,
@@ -569,14 +567,13 @@ class _AddDealerFormState extends State<_AddDealerForm> {
           backgroundColor: Colors.green,
         ),
       );
-      navigator.pop();
+      navigator.pop(); // Close the form on success
     } catch (e) {
-      debugPrint('--- DEALER CREATION FAILED ---');
-      debugPrint(e.toString());
+      debugPrint('--- DEALER CREATION FAILED ---\n$e');
       scaffoldMessenger.showSnackBar(
-        SnackBar(
+        const SnackBar(
           content: Text(
-            'Failed to create dealer: Check debug console for details.',
+            'Failed to create dealer. See debug console for details.',
           ),
           backgroundColor: Colors.red,
         ),
@@ -584,6 +581,25 @@ class _AddDealerFormState extends State<_AddDealerForm> {
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
+  }
+
+  /// Helper function to create consistent styling for input fields.
+  InputDecoration _inputDecoration(String label, {bool readOnly = false}) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(color: Colors.white70),
+      fillColor: readOnly ? Colors.white10 : Colors.transparent,
+      filled: readOnly,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      enabledBorder: OutlineInputBorder(
+        borderSide: const BorderSide(color: Colors.white30),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderSide: const BorderSide(color: Colors.white),
+        borderRadius: BorderRadius.circular(12),
+      ),
+    );
   }
 
   @override
@@ -616,7 +632,10 @@ class _AddDealerFormState extends State<_AddDealerForm> {
                     ? const SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.black,
+                        ),
                       )
                     : const Icon(Icons.my_location),
                 label: const Text('Get Current Location & Address'),
@@ -632,6 +651,7 @@ class _AddDealerFormState extends State<_AddDealerForm> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // Auto-filled location fields (read-only)
                       TextFormField(
                         controller: _addressController,
                         readOnly: true,
@@ -666,6 +686,8 @@ class _AddDealerFormState extends State<_AddDealerForm> {
                         ),
                       ),
                       const SizedBox(height: 16),
+
+                      // Sub-dealer switch and conditional dropdown
                       SwitchListTile(
                         title: const Text(
                           'Is this a Sub-dealer?',
@@ -675,13 +697,14 @@ class _AddDealerFormState extends State<_AddDealerForm> {
                         onChanged: (bool value) {
                           setState(() {
                             _isSubDealer = value;
-                            if (!value) _selectedParentDealer = null;
+                            if (!value)
+                              _selectedParentDealer =
+                                  null; // Clear selection if switched off
                           });
                         },
                         activeThumbColor: Colors.amber,
                         contentPadding: EdgeInsets.zero,
                       ),
-
                       if (_isSubDealer)
                         Padding(
                           padding: const EdgeInsets.only(
@@ -690,15 +713,12 @@ class _AddDealerFormState extends State<_AddDealerForm> {
                           ),
                           child: _isLoadingDealers
                               ? const Center(
-                                  child: Padding(
-                                    padding: EdgeInsets.all(8.0),
-                                    child: CircularProgressIndicator(
-                                      color: Colors.white,
-                                    ),
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
                                   ),
                                 )
                               : DropdownButtonFormField<Dealer>(
-                                  initialValue: _selectedParentDealer,
+                                  value: _selectedParentDealer,
                                   isExpanded: true,
                                   hint: const Text(
                                     'Select Parent Dealer*',
@@ -728,6 +748,7 @@ class _AddDealerFormState extends State<_AddDealerForm> {
                                 ),
                         ),
 
+                      // Manual input fields
                       TextFormField(
                         controller: _nameController,
                         style: const TextStyle(color: Colors.white),
@@ -737,7 +758,7 @@ class _AddDealerFormState extends State<_AddDealerForm> {
                       ),
                       const SizedBox(height: 16),
                       DropdownButtonFormField<String>(
-                        initialValue: _selectedType,
+                        value: _selectedType,
                         hint: const Text(
                           'Select Type*',
                           style: TextStyle(color: Colors.white70),

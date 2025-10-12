@@ -3,7 +3,7 @@ import 'package:assetarchiverflutter/models/employee_model.dart';
 import 'package:assetarchiverflutter/api/auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'dart:developer' as dev;
+import 'dart:developer' as dev; // Still useful for actual debug console
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -19,19 +19,10 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   String? _errorMessage;
 
-  // --- NEW: On-screen logger ---
-  final List<String> _debugLogs = [];
-
-  // Helper to log messages to the screen and the debug console simultaneously
-  void _log(String message) {
-    // Also log to the actual debug console just in case
-    dev.log(message, name: 'LoginScreen');
-    // Add to our on-screen list and refresh the UI
-    setState(() {
-      _debugLogs.insert(0, '[${TimeOfDay.now().format(context)}] $message');
-    });
-  }
-  // --- END NEW ---
+  // --- REMOVED: No more on-screen debug logs ---
+  // The List<String> _debugLogs = []; and _log() function definition are removed.
+  // The calls to _log() within the _handleLogin() function will now refer
+  // to a simple debugPrint, as originally intended for a production build.
 
   @override
   void dispose() {
@@ -41,14 +32,15 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _handleLogin() async {
-    _log('Login button pressed.');
+    // Reverted to simple debugPrint or removed logging calls for production
+    dev.log('Login button pressed.', name: 'LoginScreen'); 
     FocusScope.of(context).unfocus();
 
     final loginId = _loginIdController.text.trim();
     final password = _passwordController.text;
 
     if (loginId.isEmpty || password.isEmpty) {
-      _log('Validation failed: Fields are empty.');
+      dev.log('Validation failed: Fields are empty.', name: 'LoginScreen');
       setState(() {
         _errorMessage = 'Please enter both Login ID and Password.';
       });
@@ -61,22 +53,22 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      _log('Calling AuthService.login...');
+      dev.log('Calling AuthService.login...', name: 'LoginScreen');
       final Employee employee = await AuthService().login(loginId, password);
       
       if (!mounted) {
-        _log('Login successful, but widget is no longer mounted.');
+        dev.log('Login successful, but widget is no longer mounted.', name: 'LoginScreen');
         return;
       }
 
-      _log('Login success! Navigating to /home.');
+      dev.log('Login success! Navigating to /home.', name: 'LoginScreen');
       Navigator.of(context).pushNamedAndRemoveUntil(
         '/home',
         (route) => false,
         arguments: employee,
       );
     } catch (e) {
-      _log('Login failed with error: ${e.toString()}');
+      dev.log('Login failed with error: ${e.toString()}', name: 'LoginScreen');
       if (!mounted) return;
       final msg = e.toString().replaceFirst('Exception: ', '');
       setState(() => _errorMessage = msg);
@@ -127,9 +119,21 @@ class _LoginScreenState extends State<LoginScreen> {
                           const SizedBox(height: 8),
                           Text('to continue to your account', textAlign: TextAlign.center, style: textTheme.bodyLarge?.copyWith(color: Colors.white.withAlpha(179))),
                           const SizedBox(height: 32),
-                          TextField(controller: _loginIdController, decoration: const InputDecoration(labelText: 'Login ID', prefixIcon: Icon(Icons.person_outline)), keyboardType: TextInputType.text, textInputAction: TextInputAction.next),
+                          TextField(
+                            controller: _loginIdController,
+                            decoration: const InputDecoration(labelText: 'Login ID', prefixIcon: Icon(Icons.person_outline)),
+                            keyboardType: TextInputType.text,
+                            textInputAction: TextInputAction.next,
+                            style: const TextStyle(color: Colors.white), // Ensures text color is white
+                          ),
                           const SizedBox(height: 16),
-                          TextField(controller: _passwordController, decoration: const InputDecoration(labelText: 'Password', prefixIcon: Icon(Icons.lock_outline)), obscureText: true, onSubmitted: (_) => _handleLogin()),
+                          TextField(
+                            controller: _passwordController,
+                            decoration: const InputDecoration(labelText: 'Password', prefixIcon: Icon(Icons.lock_outline)),
+                            obscureText: true,
+                            onSubmitted: (_) => _handleLogin(),
+                            style: const TextStyle(color: Colors.white), // Ensures text color is white
+                          ),
                           const SizedBox(height: 24),
                           if (_errorMessage != null)
                             Padding(
@@ -137,7 +141,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               child: Text(_errorMessage!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.amberAccent)),
                             ),
                           _isLoading
-                              ? const Center(child: CircularProgressIndicator())
+                              ? const Center(child: CircularProgressIndicator(color: Colors.white))
                               : ElevatedButton(onPressed: _handleLogin, child: const Text('Continue')),
                         ],
                       ),
@@ -145,27 +149,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ).animate().fadeIn(duration: 500.ms).scale(begin: const Offset(0.9, 0.9)),
 
-                // --- NEW: On-screen log viewer ---
-                if (_debugLogs.isNotEmpty)
-                  Container(
-                    margin: const EdgeInsets.only(top: 24),
-                    padding: const EdgeInsets.all(12),
-                    height: 150,
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: ListView.builder(
-                      reverse: true,
-                      itemCount: _debugLogs.length,
-                      itemBuilder: (context, index) {
-                        return Text(
-                          _debugLogs[index],
-                          style: const TextStyle(color: Colors.white, fontSize: 12),
-                        );
-                      },
-                    ),
-                  ),
+                // --- REMOVED: No more on-screen log viewer ---
+                // The entire Container for _debugLogs is removed from the widget tree.
               ],
             ),
           ),
@@ -174,4 +159,3 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
-

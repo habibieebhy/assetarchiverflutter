@@ -206,7 +206,7 @@ class _PjpCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 16),
-          const Icon(Icons.keyboard_arrow_left, color: Colors.white70, size: 30),
+          const Icon(Icons.keyboard_arrow_right, color: Colors.white70, size: 30),
         ],
       ),
     );
