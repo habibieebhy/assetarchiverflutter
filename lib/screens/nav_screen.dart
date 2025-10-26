@@ -15,6 +15,8 @@ import 'package:assetarchiverflutter/screens/forms/create_leave_form.dart';
 import 'package:assetarchiverflutter/screens/forms/create_competition_form.dart';
 import 'package:assetarchiverflutter/screens/forms/create_daily_task_form.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:flutter_radar/flutter_radar.dart';
+import 'dart:async';
 import 'package:provider/provider.dart';
 
 class NavProvider with ChangeNotifier {
@@ -442,59 +444,87 @@ class _AddDealerFormState extends State<_AddDealerForm> {
   }
 
   /// Gets the device's current location and uses reverse geocoding to populate address fields.
-  Future<void> _fetchLocationAndAddress() async {
-    setState(() => _isFetchingLocation = true);
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
+// In NavScreen.dart -> _AddDealerFormState
 
-    try {
-      // 1. Check if location services are enabled
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) throw Exception('Location services are disabled.');
+Future<void> _fetchLocationAndAddress() async {
+  setState(() => _isFetchingLocation = true);
+  final scaffoldMessenger = ScaffoldMessenger.of(context);
+  StreamSubscription<Position>? positionStreamSubscription; // Keep track of the stream
 
-      // 2. Check and request location permissions
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          throw Exception('Location permissions are denied');
-        }
-      }
+  try {
+    // 1. Permissions (Using Radar's method for consistency)
+    String? status = await Radar.getPermissionsStatus();
+    if (status == 'DENIED' || status == 'NOT_DETERMINED') {
+      status = await Radar.requestPermissions(true);
+    }
+    if (status != 'GRANTED_BACKGROUND' && status != 'GRANTED_FOREGROUND') {
+      throw Exception('Location permissions are required.');
+    }
 
-      if (permission == LocationPermission.deniedForever) {
-        throw Exception('Location permissions are permanently denied.');
-      }
+    // 2. Service Check (Using Geolocator)
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) throw Exception('Location services are disabled.');
 
-      // 3. Get the current position with high accuracy
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
+    // --- Listen to stream for 5 seconds ---
+    // Completer<Position> positionCompleter = Completer<Position>(); // <-- REMOVED (Unused)
+    List<Position> positions = []; // Store readings
 
-      // 4. Use the coordinates to get address details from the API
-      final addressDetails = await _apiService.reverseGeocodeWithRadar(
-        latitude: position.latitude,
-        longitude: position.longitude,
-      );
+    const LocationSettings locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 0,
+    );
 
-      // 5. Update the UI with the fetched data
-      if (mounted) {
-        setState(() {
-          _currentPosition = position;
-          _addressController.text = addressDetails['address']!;
-          _regionController.text = addressDetails['region']!;
-          _areaController.text = addressDetails['area']!;
-          _pinCodeController.text = addressDetails['pinCode']!;
-        });
-      }
-    } catch (e) {
-      scaffoldMessenger.showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _isFetchingLocation = false);
-      }
+    positionStreamSubscription =
+        Geolocator.getPositionStream(locationSettings: locationSettings)
+            .listen((Position position) {
+      debugPrint("Received location reading: Accuracy ${position.accuracy}");
+      positions.add(position);
+    });
+
+    // Stop listening after 5 seconds
+    await Future.delayed(const Duration(seconds: 5));
+    await positionStreamSubscription.cancel(); // Use ?. here is fine
+    positionStreamSubscription = null; // Clear the subscription
+
+    // Process the collected positions
+    if (positions.isEmpty) {
+      throw Exception('Failed to get any location readings in 5 seconds.');
+    }
+
+    final Position bestPosition = positions.last;
+    debugPrint("Using position with accuracy: ${bestPosition.accuracy}");
+    // --- END OF STREAM LOGIC ---
+
+    // 4. Use the chosen coordinates for Reverse Geocoding
+    final addressDetails = await _apiService.reverseGeocodeWithRadar(
+      latitude: bestPosition.latitude,
+      longitude: bestPosition.longitude,
+    );
+
+    // 5. Update UI
+    if (mounted) {
+      setState(() {
+        _currentPosition = bestPosition;
+        _addressController.text = addressDetails['address']!;
+        _regionController.text = addressDetails['region']!;
+        _areaController.text = addressDetails['area']!;
+        _pinCodeController.text = addressDetails['pinCode']!;
+      });
+    }
+  } catch (e) {
+    // --- FIX: Use an explicit null check before cancelling in catch ---
+    if (positionStreamSubscription != null) {
+      await positionStreamSubscription.cancel();
+    }
+    scaffoldMessenger.showSnackBar(
+      SnackBar(content: Text('Error getting location/address: $e'), backgroundColor: Colors.red),
+    );
+  } finally {
+    if (mounted) {
+      setState(() => _isFetchingLocation = false);
     }
   }
+}
 
   /// Validates and submits the form data to create a new dealer.
   Future<void> _submitForm() async {
